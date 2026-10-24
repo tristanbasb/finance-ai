@@ -3,9 +3,13 @@
 // Usage : node scripts/backup-db.mjs <fichier-destination> [--keep N]
 // --keep N : ne conserve que les N sauvegardes `finance-AAAAmmjj-HHMMSS.db` les plus récentes
 // du dossier de destination.
+// Codes de sortie : 0 = succès, 3 = aucune base à sauvegarder, 1 = erreur.
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+
+// Sauvegardes lisibles uniquement par leur propriétaire (droits 600).
+process.umask(0o077);
 
 const args = process.argv.slice(2);
 let keep = 0;
@@ -28,7 +32,7 @@ if (!dest || args.length !== 1) {
 const source = process.env.DATABASE_PATH ?? "./data/finance.db";
 if (!fs.existsSync(source)) {
   console.error(`Base introuvable : ${source}`);
-  process.exit(1);
+  process.exit(3);
 }
 if (fs.existsSync(dest)) {
   console.error(`La destination existe déjà : ${dest}`);
@@ -51,6 +55,7 @@ try {
 } finally {
   copy.close();
 }
+fs.chmodSync(dest, 0o600);
 console.log(`Sauvegarde écrite : ${dest}`);
 
 if (keep > 0) {

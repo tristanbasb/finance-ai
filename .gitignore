@@ -16,6 +16,7 @@ next-env.d.ts
 # données locales
 data/
 backups/
+.deployed-commit
 *.db
 *.db-*
 

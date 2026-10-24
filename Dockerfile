@@ -37,6 +37,9 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/scripts/hash-password.mjs /app/scripts/backup-db.mjs ./scripts/
 
+# Vérifie dès le build que le binaire natif de better-sqlite3 (tracé par Next.js) se charge.
+RUN node -e "new (require('better-sqlite3'))(':memory:').close(); console.log('better-sqlite3 OK')"
+
 RUN mkdir -p /app/data /app/backups /app/.next/cache \
  && chown app:app /app/data /app/backups /app/.next/cache
 

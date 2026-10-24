@@ -82,7 +82,7 @@ FINANCE_AI_YES=1 \
 | `ANTHROPIC_API_KEY` | Clé API Claude (définie mais vide = sans IA) |
 | `CLAUDE_MODEL` | Modèle Claude (défaut `claude-opus-5-5`) |
 | `APP_PORT` | Port HTTP publié (défaut `3000`) |
-| `FINANCE_AI_YES=1` | Répond « oui » aux confirmations (installation de Docker) |
+| `FINANCE_AI_YES=1` | Aucune question : « oui » aux confirmations (installation de Docker), valeurs par défaut ailleurs ; `FINANCE_AI_PASSWORD` devient obligatoire |
 | `FINANCE_AI_DIR` | Dossier d'installation en mode `curl … \| bash` (défaut `~/finance-ai`) |
 | `FINANCE_AI_REPO` | Dépôt cloné en mode `curl … \| bash` (utile pour un fork) |
 
@@ -114,10 +114,11 @@ cd ~/finance-ai
 
 `update.sh` sauvegarde d'abord la base (`backups/finance-AAAAmmjj-HHMMSS.db`, les 10 plus
 récentes sont conservées), récupère la dernière version (`git pull --ff-only`), reconstruit
-l'image et redémarre l'application en vérifiant qu'elle répond. Sans nouvelle version, il
-s'arrête après la sauvegarde (« Déjà à jour ») ; `./update.sh --force` reconstruit quand même.
-En cas d'échec, il affiche les commandes exactes pour revenir à la version précédente et
-restaurer la sauvegarde.
+l'image et redémarre l'application en vérifiant qu'elle répond. Si la version en service est
+déjà la dernière, il s'arrête après la sauvegarde (« Déjà à jour ») ; `./update.sh --force`
+reconstruit quand même. Si la construction échoue, l'ancienne version continue de tourner et
+le prochain `./update.sh` retente la reconstruction. Si la nouvelle version ne démarre pas, il
+affiche les commandes exactes pour revenir à la version précédente et restaurer la sauvegarde.
 
 Le script refuse de continuer si des fichiers du dépôt ont été modifiés localement
 (`.env`, `data/` et `backups/` ne sont pas concernés).
@@ -130,7 +131,7 @@ Let's Encrypt automatique), dans `/etc/caddy/Caddyfile` :
 
 ```caddyfile
 finance.example.com {
-	reverse_proxy localhost:3000
+	reverse_proxy 127.0.0.1:3000
 }
 ```
 
@@ -163,18 +164,23 @@ arrêter l'application :
 docker compose exec -T app node scripts/backup-db.mjs /app/backups/finance-$(date +%Y%m%d-%H%M%S).db --keep 10
 ```
 
-Le fichier apparaît dans `backups/`. Copiez régulièrement ce dossier hors du serveur. Vous pouvez
+Le fichier apparaît dans `backups/`. Les dossiers `data/` et `backups/` appartiennent à
+l'utilisateur du conteneur (UID 1001, droits `700`) : pour les copier hors du serveur, utilisez
+`sudo` (par ex. `sudo tar czf finance-backups.tgz backups`). Faites-le régulièrement. Vous pouvez
 aussi exporter toutes vos données en JSON depuis **Réglages**.
 
 Pour restaurer une sauvegarde :
 
 ```bash
+B=finance-AAAAmmjj-HHMMSS.db   # nom du fichier dans backups/
 docker compose down
-docker compose run --rm --no-deps app sh -c 'cp /app/backups/finance-AAAAmmjj-HHMMSS.db /app/data/finance.db && rm -f /app/data/finance.db-wal /app/data/finance.db-shm'
+docker compose run --rm --no-deps app sh -c "rm -f /app/data/finance.db-wal /app/data/finance.db-shm && cp /app/backups/$B /app/data/finance.db && if [ -f /app/backups/$B-wal ]; then cp /app/backups/$B-wal /app/data/finance.db-wal; fi"
 docker compose up -d
 ```
 
-(la copie se fait dans un conteneur éphémère, avec l'utilisateur propriétaire des données).
+La copie se fait dans un conteneur éphémère, avec l'utilisateur propriétaire des données. Les
+journaux périmés sont supprimés, puis la base est copiée avec son journal WAL s'il existe
+(cas d'une copie brute faite par `update.sh` sans image Docker disponible).
 
 ## Changer le mot de passe
 

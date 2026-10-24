@@ -42,6 +42,11 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# non_interactive → 0 si aucune question ne doit être posée (FINANCE_AI_YES=1 ou pas de terminal).
+non_interactive() {
+  [ "${FINANCE_AI_YES:-0}" = "1" ] || [ "$HAS_TTY" != "1" ]
+}
+
 # confirm "Question ?" → 0 si oui. FINANCE_AI_YES=1 répond oui automatiquement.
 confirm() {
   local answer
@@ -58,10 +63,10 @@ confirm() {
   esac
 }
 
-# ask "Question" "défaut" → imprime la réponse (ou le défaut si vide).
+# ask "Question" "défaut" → imprime la réponse (ou le défaut si vide, ou en mode non interactif).
 ask() {
   local answer
-  [ "$HAS_TTY" = "1" ] || {
+  ! non_interactive || {
     printf '%s\n' "$2"
     return 0
   }
@@ -73,7 +78,7 @@ ask() {
 # ask_secret "Question" → imprime la saisie masquée (rien n'est affiché à l'écran).
 ask_secret() {
   local answer
-  [ "$HAS_TTY" = "1" ] || die "Pas de terminal pour la saisie masquée : « $1 »."
+  ! non_interactive || die "Mode non interactif : impossible de demander « $1 »."
   printf '%s : ' "$1" >&2
   read -r -s answer <&3 || answer=""
   printf '\n' >&2
@@ -89,7 +94,7 @@ read_new_password() {
     printf '%s' "$pw"
     return 0
   fi
-  [ "$HAS_TTY" = "1" ] || die "Aucun terminal : définissez FINANCE_AI_PASSWORD pour une installation non interactive."
+  ! non_interactive || die "Mode non interactif (FINANCE_AI_YES=1 ou pas de terminal) : définissez FINANCE_AI_PASSWORD."
   while true; do
     pw="$(ask_secret "Mot de passe de connexion (8 caractères minimum)")"
     if [ "${#pw}" -lt 8 ]; then
@@ -285,46 +290,104 @@ hash_password() {
 BACKUP_KEEP=10
 BACKUP_FILE=""
 
-# prune_host_backups : garde les BACKUP_KEEP sauvegardes les plus récentes (copies côté hôte).
+# is_backup_name <nom> → 0 si le nom suit exactement finance-AAAAmmjj-HHMMSS.db.
+is_backup_name() {
+  [[ "$1" =~ ^finance-[0-9]{8}-[0-9]{6}\.db$ ]]
+}
+
+# prune_host_backups [dossier] : garde les BACKUP_KEEP sauvegardes les plus récentes (copies
+# côté hôte). Ne touche qu'aux fichiers au nom strict finance-AAAAmmjj-HHMMSS.db et à leurs
+# compagnons -wal/-shm : jamais finance-1.db ni un autre fichier de l'utilisateur.
 prune_host_backups() {
-  local old
-  find backups -maxdepth 1 -type f -name 'finance-*.db' | sort -r | tail -n +"$((BACKUP_KEEP + 1))" |
-    while IFS= read -r old; do
-      rm -f "$old" "$old-wal" "$old-shm" 2>/dev/null || as_root rm -f "$old" "$old-wal" "$old-shm"
+  local dir="${1:-backups}" path name
+  local -a names=()
+  for path in "$dir"/finance-*.db; do
+    [ -f "$path" ] || continue
+    name="${path##*/}"
+    if is_backup_name "$name"; then
+      names+=("$name")
+    fi
+  done
+  [ "${#names[@]}" -gt "$BACKUP_KEEP" ] || return 0
+  # Les horodatages se trient comme du texte : les plus récents en premier.
+  printf '%s\n' "${names[@]}" | sort -r | tail -n +"$((BACKUP_KEEP + 1))" |
+    while IFS= read -r name; do
+      path="$dir/$name"
+      rm -f "$path" "$path-wal" "$path-shm" 2>/dev/null || as_root rm -f "$path" "$path-wal" "$path-shm"
     done
+}
+
+# host_copy_backup <nom> : copie brute data/finance.db (+ -wal, -shm) vers backups/<nom>*,
+# en conservant le propriétaire (UID 1001) et en droits 600. Utilisé seulement sans image.
+host_copy_backup() {
+  local name="$1" f dest
+  for f in data/finance.db data/finance.db-wal data/finance.db-shm; do
+    dest="backups/$name${f#data/finance.db}"
+    if [ -r data ] && [ -x data ] && [ -w backups ]; then
+      [ -f "$f" ] || continue
+      cp -p "$f" "$dest" && chmod 600 "$dest"
+    else
+      as_root test -f "$f" || continue
+      as_root cp -p "$f" "$dest" && as_root chmod 600 "$dest"
+    fi
+  done
 }
 
 # backup_db : sauvegarde data/finance.db dans backups/finance-AAAAmmjj-HHMMSS.db.
 # Règle BACKUP_FILE (vide si aucune base n'existe encore : ce n'est pas une erreur).
+# data/ est en 700 (UID 1001) : l'existence de la base est testée par backup-db.mjs (code 3).
 backup_db() {
-  local name
+  local name rc=0
   BACKUP_FILE=""
-  if [ ! -f data/finance.db ]; then
-    info "Aucune base de données à sauvegarder (première installation ?)."
-    return 0
-  fi
-  [ -d backups ] || mkdir -p backups 2>/dev/null || as_root mkdir -p backups
   name="finance-$(date +%Y%m%d-%H%M%S).db"
-  info "Sauvegarde de la base → backups/$name"
   if app_running; then
     # Sauvegarde en ligne via l'API backup de SQLite, dans le conteneur (UID 1001).
-    compose exec -T app node scripts/backup-db.mjs "/app/backups/$name" --keep "$BACKUP_KEEP" ||
-      die "La sauvegarde a échoué : mise à jour annulée."
+    compose exec -T app node scripts/backup-db.mjs "/app/backups/$name" --keep "$BACKUP_KEEP" || rc=$?
   elif docker_cmd image inspect "$IMAGE" >/dev/null 2>&1; then
     # Conteneur arrêté : même script, dans un conteneur éphémère (aucun autre écrivain).
-    compose run --rm --no-deps -T app node scripts/backup-db.mjs "/app/backups/$name" --keep "$BACKUP_KEEP" ||
-      die "La sauvegarde a échoué : mise à jour annulée."
+    compose run --rm --no-deps -T app node scripts/backup-db.mjs "/app/backups/$name" --keep "$BACKUP_KEEP" || rc=$?
+  elif [ -f data/finance.db ] || as_root test -f data/finance.db; then
+    # Pas d'image : copie brute (base + journal WAL) depuis l'hôte.
+    [ -d backups ] || mkdir -p backups 2>/dev/null || as_root mkdir -p backups
+    if host_copy_backup "$name"; then
+      prune_host_backups backups
+    else
+      rc=1
+    fi
   else
-    # Pas d'image : copie brute (base + journaux WAL) depuis l'hôte.
-    local f
-    for f in data/finance.db data/finance.db-wal data/finance.db-shm; do
-      [ -f "$f" ] || continue
-      cp -p "$f" "backups/$name${f#data/finance.db}" 2>/dev/null ||
-        as_root cp -p "$f" "backups/$name${f#data/finance.db}" ||
-        die "La sauvegarde a échoué : mise à jour annulée."
-    done
-    prune_host_backups
+    rc=3
   fi
+  case "$rc" in
+    0) ;;
+    3)
+      info "Aucune base de données à sauvegarder (première installation ?)."
+      return 0
+      ;;
+    *) die "La sauvegarde a échoué : mise à jour annulée." ;;
+  esac
   BACKUP_FILE="backups/$name"
   ok "Sauvegarde créée : $BACKUP_FILE"
+}
+
+# restore_command <backups/fichier.db> → commande de restauration (à lancer conteneur arrêté).
+# Supprime d'abord les journaux périmés, puis copie la base et, s'il existe, son journal WAL.
+restore_command() {
+  local b="/app/$1"
+  printf '%s run --rm --no-deps app sh -c '"'"'rm -f /app/data/finance.db-wal /app/data/finance.db-shm && cp %s /app/data/finance.db && if [ -f %s-wal ]; then cp %s-wal /app/data/finance.db-wal; fi'"'"'\n' \
+    "${COMPOSE[*]}" "$b" "$b" "$b"
+}
+
+# ---------------------------------------------------------------------------
+# Version déployée (.deployed-commit, ignoré par git)
+# ---------------------------------------------------------------------------
+
+# deployed_commit → commit de la dernière version démarrée avec succès (vide si inconnu).
+deployed_commit() {
+  [ -f .deployed-commit ] || return 0
+  head -n 1 .deployed-commit
+}
+
+# mark_deployed : enregistre HEAD comme version déployée (après un démarrage en bonne santé).
+mark_deployed() {
+  git rev-parse HEAD >.deployed-commit 2>/dev/null || rm -f .deployed-commit
 }

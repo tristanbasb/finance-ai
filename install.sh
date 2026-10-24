@@ -105,6 +105,9 @@ check_system() {
 
 install_docker() {
   warn "Docker n'est pas installé."
+  if [ "$(id -u)" -ne 0 ]; then
+    warn "$(id -un) sera ajouté au groupe docker : ce groupe donne des droits équivalents à root."
+  fi
   confirm "Installer Docker avec le script officiel https://get.docker.com ?" ||
     die "Docker est requis. Installez-le (https://docs.docker.com/engine/install/) puis relancez."
   info "Installation de Docker…"
@@ -169,12 +172,13 @@ create_env() {
   secret="$(random_secret)"
   [ "${#secret}" -ge 32 ] || die "Impossible de générer SESSION_SECRET."
 
+  # Mode non interactif (FINANCE_AI_YES=1 ou sans terminal) : aucune question, valeurs par défaut.
   if [ -n "${ANTHROPIC_API_KEY+x}" ]; then
     api_key="$ANTHROPIC_API_KEY"
-  elif [ "$HAS_TTY" = "1" ]; then
-    api_key="$(ask_secret "Clé API Claude (optionnelle, Entrée pour ignorer)")"
-  else
+  elif non_interactive; then
     api_key=""
+  else
+    api_key="$(ask_secret "Clé API Claude (optionnelle, Entrée pour ignorer)")"
   fi
   [ -n "$api_key" ] || info "Pas de clé API : les fonctions IA resteront désactivées (ajoutez-la plus tard dans .env)."
 
@@ -184,7 +188,7 @@ create_env() {
   port="${APP_PORT:-}"
   [ -n "$port" ] || port="$(ask "Port HTTP de l'application" "3000")"
   while ! valid_port "$port"; do
-    if [ "$HAS_TTY" != "1" ] || [ -n "${APP_PORT:-}" ]; then
+    if non_interactive || [ -n "${APP_PORT:-}" ]; then
       die "Port invalide : $port"
     fi
     warn "Port invalide : $port"
@@ -213,8 +217,12 @@ prepare_dirs() {
     if [ "$(stat -c '%u:%g' "$d")" != "1001:1001" ]; then
       as_root chown -R 1001:1001 "$d"
     fi
+    # Données financières : illisibles pour les autres utilisateurs du serveur.
+    if [ "$(stat -c '%a' "$d")" != "700" ]; then
+      as_root chmod 700 "$d"
+    fi
   done
-  ok "Dossiers data/ et backups/ attribués à l'utilisateur du conteneur (UID 1001)."
+  ok "Dossiers data/ et backups/ réservés à l'utilisateur du conteneur (UID 1001, droits 700)."
 }
 
 start_app() {
@@ -224,6 +232,7 @@ start_app() {
     compose logs --tail 50 app || true
     die "L'application n'a pas démarré. Journaux ci-dessus ; relancez ./install.sh après correction."
   fi
+  mark_deployed
 }
 
 print_summary() {
@@ -254,6 +263,10 @@ print_summary() {
 main() {
   printf '\n%s\n\n' "$(bold "Finance AI — installation")"
   check_system
+  # Échouer tout de suite plutôt qu'après l'installation de Docker et le build.
+  if [ ! -f .env ] && non_interactive && [ -z "${FINANCE_AI_PASSWORD:-}" ]; then
+    die "Mode non interactif (FINANCE_AI_YES=1 ou pas de terminal) : définissez FINANCE_AI_PASSWORD."
+  fi
   ensure_docker
   build_image
   create_env
