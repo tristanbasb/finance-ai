@@ -54,7 +54,7 @@ describe("parseCsv", () => {
     ]);
   });
   it("retourne un résultat vide pour un texte vide", () => {
-    expect(parseCsv("")).toEqual({ headers: [], rows: [], delimiter: ";" });
+    expect(parseCsv("")).toEqual({ headers: [], rows: [], lines: [], delimiter: ";" });
   });
 });
 
@@ -154,6 +154,64 @@ describe("mapRows", () => {
       credit: 3,
     });
     expect(errors).toEqual([{ line: 2, reason: "Montant manquant" }]);
+  });
+});
+
+describe("choix de la ligne d'en-tête (préambule bancaire)", () => {
+  it("saute les lignes de préambule et prend la première ligne reconnue comme en-tête", () => {
+    const r = parseCsv("Téléchargement du 24/10/2026;\nCompte n° 123;\nDate;Libellé;Montant\n24/10/2026;Courses;-12,50\n");
+    expect(r.headers).toEqual(["Date", "Libellé", "Montant"]);
+    expect(r.rows).toEqual([["24/10/2026", "Courses", "-12,50"]]);
+    expect(r.lines).toEqual([4]);
+  });
+  it("reconnaît un en-tête débit/crédit sans colonne montant", () => {
+    const r = parseCsv("Export;\nDate opération;Libellé;Débit;Crédit\n24/10/2026;Café;2,10;\n");
+    expect(r.headers).toEqual(["Date opération", "Libellé", "Débit", "Crédit"]);
+    expect(r.rows).toHaveLength(1);
+  });
+  it("sans en-tête reconnu, prend la 1re ligne ayant le nombre de champs le plus fréquent", () => {
+    const r = parseCsv("Mon export\nA;B;C\n1;2;3\n4;5;6\n");
+    expect(r.headers).toEqual(["A", "B", "C"]);
+    expect(r.rows).toEqual([
+      ["1", "2", "3"],
+      ["4", "5", "6"],
+    ]);
+  });
+  it("détecte le délimiteur même si le préambule contient des virgules", () => {
+    const r = parseCsv("Solde au 24/10/2026 : 1 234,56\nDate;Libellé;Montant\n24/10/2026;Courses;-12,50\n");
+    expect(r.delimiter).toBe(";");
+    expect(r.headers).toEqual(["Date", "Libellé", "Montant"]);
+  });
+  it("numérote les lignes comme dans le fichier (lignes vides et champs multilignes compris)", () => {
+    const r = parseCsv('Date;Libellé;Montant\r\n\r\n24/10/2026;"deux\nlignes";1\r\n25/10/2026;X;2\r\n');
+    expect(r.lines).toEqual([3, 5]);
+  });
+  it("mapRows utilise les numéros de ligne fournis", () => {
+    const { errors } = mapRows([["pas une date", "x", "1"]], { date: 0, label: 1, amount: 2 }, [9]);
+    expect(errors).toEqual([{ line: 9, reason: "Date invalide" }]);
+  });
+});
+
+describe("relevé Latin-1 avec préambule (tests/fixtures/releve-preambule.csv)", () => {
+  const bytes = readFileSync(fileURLToPath(new URL("./fixtures/releve-preambule.csv", import.meta.url)));
+
+  it("enchaîne decodeCsvBytes, parseCsv, guessMapping et mapRows de bout en bout", () => {
+    const { headers, rows, lines, delimiter } = parseCsv(decodeCsvBytes(bytes));
+    expect(delimiter).toBe(";");
+    expect(headers).toEqual(["Date", "Libellé", "Débit euros", "Crédit euros"]);
+    expect(rows).toHaveLength(5);
+
+    const guess = guessMapping(headers);
+    expect(guess).toEqual({ date: 0, label: 1, debit: 2, credit: 3 });
+
+    const { valid, errors } = mapRows(rows, guess as CsvMapping, lines);
+    expect(errors).toEqual([{ line: 9, reason: "Date invalide" }]);
+    expect(valid).toEqual([
+      { date: "2026-10-02", label: "CB CARREFOUR MARKET", amount: -4560 },
+      { date: "2026-10-03", label: "PRLV SEPA EDF", amount: -7210 },
+      { date: "2026-10-05", label: "VIR SALAIRE OCTOBRE", amount: 245000 },
+      { date: "2026-10-08", label: "CB BOULANGERIE DU MARCHÉ", amount: -320 },
+    ]);
   });
 });
 

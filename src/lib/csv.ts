@@ -17,12 +17,27 @@ export type ParsedTx = { date: string; label: string; amount: number };
 
 const DELIMITERS: Delimiter[] = [";", ",", "\t"];
 
-/** Délimiteur le plus fréquent hors guillemets sur la première ligne (« ; » par défaut). */
+/** Nombre de lignes examinées pour détecter le délimiteur et la ligne d'en-tête. */
+const SCAN_LINES = 20;
+
+/**
+ * Délimiteur hors guillemets : celui qui apparaît le plus de fois sur une même ligne parmi les
+ * premières lignes (« ; » par défaut). Le maximum par ligne résiste aux lignes de préambule
+ * (« Solde : 1 234,56 ») comme aux virgules décimales des lignes de données.
+ */
 function detectDelimiter(text: string): Delimiter {
-  const counts = new Map<Delimiter, number>(DELIMITERS.map((d) => [d, 0]));
+  const best = new Map<Delimiter, number>(DELIMITERS.map((d) => [d, 0]));
+  let counts = new Map<Delimiter, number>(DELIMITERS.map((d) => [d, 0]));
+  let lines = 0;
   let inQuotes = false;
   let fieldStart = true; // un guillemet n'ouvre un champ entre guillemets qu'en début de champ
   let justClosed = false; // un guillemet juste après une fermeture = guillemet doublé (rouvre)
+  const endLine = () => {
+    for (const d of DELIMITERS) best.set(d, Math.max(best.get(d)!, counts.get(d)!));
+    counts = new Map(DELIMITERS.map((d) => [d, 0]));
+    lines++;
+    fieldStart = true;
+  };
   for (const ch of text) {
     if (inQuotes) {
       if (ch === '"') {
@@ -38,36 +53,80 @@ function detectDelimiter(text: string): Delimiter {
       continue;
     }
     justClosed = false;
-    if (ch === "\n" || ch === "\r") break;
-    if (counts.has(ch as Delimiter)) {
+    if (ch === "\n") {
+      endLine();
+      if (lines >= SCAN_LINES) break;
+    } else if (ch === "\r") {
+      // fin de ligne CRLF : seul « \n » compte
+    } else if (counts.has(ch as Delimiter)) {
       counts.set(ch as Delimiter, counts.get(ch as Delimiter)! + 1);
       fieldStart = true;
     } else if (ch !== " ") {
       fieldStart = false;
     }
   }
-  let best: Delimiter = ";";
-  let bestCount = 0;
+  endLine();
+  let result: Delimiter = ";";
+  let resultCount = 0;
   for (const d of DELIMITERS) {
-    if (counts.get(d)! > bestCount) {
-      best = d;
-      bestCount = counts.get(d)!;
+    if (best.get(d)! > resultCount) {
+      result = d;
+      resultCount = best.get(d)!;
     }
   }
-  return best;
+  return result;
+}
+
+/**
+ * Indice de la ligne d'en-tête : la première (parmi les 20 premières) où `guessMapping` trouve
+ * date, libellé et montant (ou débit/crédit) ; à défaut, la première ligne ayant le nombre de
+ * champs le plus fréquent. Les exports bancaires commencent souvent par un préambule
+ * (« Téléchargement du … », « Compte n° … », « Solde au … ») à ignorer.
+ */
+function findHeaderIndex(records: string[][]): number {
+  const scanned = records.slice(0, SCAN_LINES);
+  const recognized = scanned.findIndex((r) => {
+    const m = guessMapping(r);
+    return (
+      m.date !== undefined &&
+      m.label !== undefined &&
+      (m.amount !== undefined || m.debit !== undefined || m.credit !== undefined)
+    );
+  });
+  if (recognized >= 0) return recognized;
+  const frequency = new Map<number, number>();
+  for (const r of records) frequency.set(r.length, (frequency.get(r.length) ?? 0) + 1);
+  let common = 0;
+  let commonCount = 0;
+  for (const [length, count] of frequency) {
+    if (count > commonCount || (count === commonCount && length > common)) {
+      common = length;
+      commonCount = count;
+    }
+  }
+  return Math.max(0, records.findIndex((r) => r.length === common));
 }
 
 /**
  * Parse un CSV : BOM retiré, délimiteur détecté, guillemets (doublés = guillemet littéral,
  * délimiteurs et sauts de ligne autorisés à l'intérieur), lignes vides ignorées.
- * La première ligne non vide donne `headers`.
+ * La ligne d'en-tête est détectée (voir `findHeaderIndex`) : les lignes au-dessus sont ignorées.
+ * `lines[i]` est le numéro de ligne dans le fichier (1 = première) où commence `rows[i]`.
  */
-export function parseCsv(text: string): { headers: string[]; rows: string[][]; delimiter: Delimiter } {
+export function parseCsv(text: string): {
+  headers: string[];
+  rows: string[][];
+  lines: number[];
+  delimiter: Delimiter;
+} {
   const src = text.startsWith("﻿") ? text.slice(1) : text;
   const delimiter = detectDelimiter(src);
 
   const records: string[][] = [];
+  const recordLines: number[] = [];
   let record: string[] = [];
+  let line = 1; // ligne physique courante
+  let recordStart = 1; // ligne où commence l'enregistrement en cours
   let field = "";
   let inQuotes = false;
   let quoted = false; // le champ courant a été ouvert par un guillemet
@@ -79,13 +138,17 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][]; d
   };
   const endRecord = () => {
     endField();
-    if (record.some((f) => f !== "")) records.push(record);
+    if (record.some((f) => f !== "")) {
+      records.push(record);
+      recordLines.push(recordStart);
+    }
     record = [];
   };
 
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (inQuotes) {
+      if (ch === "\n" || (ch === "\r" && src[i + 1] !== "\n")) line++;
       if (ch !== '"') field += ch;
       else if (src[i + 1] === '"') {
         field += '"';
@@ -100,14 +163,22 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][]; d
     } else if (ch === "\n" || ch === "\r") {
       if (ch === "\r" && src[i + 1] === "\n") i++;
       endRecord();
+      line++;
+      recordStart = line;
     } else {
       field += ch;
     }
   }
   if (field !== "" || record.length > 0) endRecord();
 
-  const [headers = [], ...rows] = records;
-  return { headers, rows, delimiter };
+  if (records.length === 0) return { headers: [], rows: [], lines: [], delimiter };
+  const headerIndex = findHeaderIndex(records);
+  return {
+    headers: records[headerIndex],
+    rows: records.slice(headerIndex + 1),
+    lines: recordLines.slice(headerIndex + 1),
+    delimiter,
+  };
 }
 
 function normalize(s: string): string {
@@ -182,16 +253,18 @@ function rowAmount(row: string[], m: CsvMapping): number | "missing" | "invalid"
 
 /**
  * Convertit les lignes de données en transactions valides, et liste les erreurs.
- * Numéros de ligne comme affichés à l'utilisateur : en-tête = ligne 1, 1re donnée = ligne 2.
+ * Numéros de ligne : `lines[i]` (ligne dans le fichier, fournie par `parseCsv`), sinon
+ * en-tête = ligne 1 et 1re donnée = ligne 2.
  */
 export function mapRows(
   rows: string[][],
   m: CsvMapping,
+  lines?: number[],
 ): { valid: ParsedTx[]; errors: { line: number; reason: string }[] } {
   const valid: ParsedTx[] = [];
   const errors: { line: number; reason: string }[] = [];
   rows.forEach((row, index) => {
-    const line = index + 2;
+    const line = lines?.[index] ?? index + 2;
     const date = parseDate(row[m.date] ?? "");
     if (date === null) return void errors.push({ line, reason: "Date invalide" });
     const label = (row[m.label] ?? "").trim();

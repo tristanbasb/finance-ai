@@ -26,7 +26,7 @@ const AI_BATCH = 500;
 
 type Cols = { date: string; label: string; amount: string; debit: string; credit: string };
 type AmountMode = "single" | "split";
-type Parsed = { fileName: string; headers: string[]; rows: string[][] };
+type Parsed = { fileName: string; headers: string[]; rows: string[][]; lines: number[] };
 
 const rowSelectClasses =
   "h-8 w-full max-w-64 cursor-pointer rounded-md border border-border bg-surface px-2 text-[13px] text-fg " +
@@ -107,7 +107,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
   }, [cols, mode]);
 
   const result = useMemo(
-    () => (parsed && mapping ? mapRows(parsed.rows, mapping) : null),
+    () => (parsed && mapping ? mapRows(parsed.rows, mapping, parsed.lines) : null),
     [parsed, mapping],
   );
   const valid = result?.valid ?? [];
@@ -125,7 +125,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
       return;
     }
     try {
-      const { headers, rows } = parseCsv(decodeCsvBytes(await file.arrayBuffer()));
+      const { headers, rows, lines } = parseCsv(decodeCsvBytes(await file.arrayBuffer()));
       if (headers.length === 0 || rows.length === 0) {
         setFileError("Le fichier ne contient aucune ligne exploitable.");
         return;
@@ -141,7 +141,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
         credit: str(guess.credit),
       });
       setCats({});
-      setParsed({ fileName: file.name, headers, rows });
+      setParsed({ fileName: file.name, headers, rows, lines });
     } catch {
       setFileError("Impossible de lire ce fichier.");
     }
