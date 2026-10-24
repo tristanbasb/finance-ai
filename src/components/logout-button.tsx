@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, LogOut } from "lucide-react";
+import { clearAssistantConversation } from "@/lib/assistant-storage";
 import { cn } from "@/lib/cn";
 import { toast } from "@/components/ui/toast";
 
@@ -16,6 +17,8 @@ export function LogoutButton({ compact = false, className }: { compact?: boolean
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
       if (!res.ok) throw new Error();
+      // La conversation de l'assistant contient des données financières : rien ne doit rester.
+      clearAssistantConversation();
       router.replace("/login");
       router.refresh();
     } catch {

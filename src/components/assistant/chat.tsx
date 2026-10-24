@@ -15,13 +15,14 @@ import { ArrowUp, Bot, CircleAlert, LoaderCircle, RotateCcw, SquarePen, Square, 
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/assistant/markdown";
+import { ASSISTANT_STORAGE_KEY } from "@/lib/assistant-storage";
 import { errorMessage } from "@/lib/http";
 import { decodeSse } from "@/lib/sse";
 import { cn } from "@/lib/cn";
 
 type Message = { id: string; role: "user" | "assistant"; content: string; stopped?: boolean };
 
-const STORAGE_KEY = "finance-ai.assistant.conversation.v1";
+const STORAGE_KEY = ASSISTANT_STORAGE_KEY;
 const MAX_HISTORY = 50;
 const MAX_CONTENT = 8000;
 
