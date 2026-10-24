@@ -3,10 +3,19 @@ import { jwtVerify, SignJWT } from "jose";
 export const SESSION_COOKIE = "fa_session";
 export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
+const MIN_SECRET_LENGTH = 32;
+
 // Le secret est lu à l'appel (jamais à l'import) pour que le build passe sans variables d'environnement.
+// Un secret de moins de 32 caractères est considéré comme absent (échec fermé).
 function getKey(): Uint8Array | null {
   const secret = process.env.SESSION_SECRET;
-  return secret ? new TextEncoder().encode(secret) : null;
+  return secret && secret.length >= MIN_SECRET_LENGTH
+    ? new TextEncoder().encode(secret)
+    : null;
+}
+
+export function isSessionSecretConfigured(): boolean {
+  return getKey() !== null;
 }
 
 export async function createSession(): Promise<string> {
@@ -43,6 +52,6 @@ export function shouldUseSecureCookie(
 /** Protocole effectif : 1re valeur de `x-forwarded-proto`, sinon celui de l'URL (sans `:`). */
 export function requestProto(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-proto");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return new URL(request.url).protocol.replace(/:$/, "");
+  if (forwarded) return forwarded.split(",")[0].trim().toLowerCase();
+  return new URL(request.url).protocol.replace(/:$/, "").toLowerCase();
 }

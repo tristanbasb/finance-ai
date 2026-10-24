@@ -3,10 +3,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   createSession,
+  isSessionSecretConfigured,
   shouldUseSecureCookie,
   verifySession,
 } from "@/lib/auth/session";
-import { createRateLimiter } from "@/lib/auth/rate-limit";
+import { clientKey, createRateLimiter } from "@/lib/auth/rate-limit";
+import { isPublicPath } from "@/lib/auth/public-paths";
+import { safeNext } from "@/lib/auth/safe-next";
 
 describe("password", () => {
   it("hache puis vérifie le bon mot de passe", async () => {
@@ -76,6 +79,18 @@ describe("session", () => {
     process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-123";
   });
 
+  it("traite un SESSION_SECRET de moins de 32 caractères comme absent", async () => {
+    const token = await createSession();
+    const saved = process.env.SESSION_SECRET;
+    process.env.SESSION_SECRET = "court-court-court";
+    expect(isSessionSecretConfigured()).toBe(false);
+    expect(await verifySession(token)).toBe(false);
+    await expect(createSession()).rejects.toThrow();
+    process.env.SESSION_SECRET = "x".repeat(32);
+    expect(isSessionSecretConfigured()).toBe(true);
+    process.env.SESSION_SECRET = saved;
+  });
+
   it("refuse tout si SESSION_SECRET est absent", async () => {
     const token = await createSession();
     const saved = process.env.SESSION_SECRET;
@@ -100,23 +115,115 @@ describe("shouldUseSecureCookie", () => {
 });
 
 describe("createRateLimiter", () => {
-  it("autorise 5 requêtes puis refuse la 6e", () => {
+  it("bloque après 5 échecs", () => {
     const rl = createRateLimiter(5, 1000);
-    for (let i = 0; i < 5; i++) expect(rl.hit("ip", 0)).toBe(true);
-    expect(rl.hit("ip", 0)).toBe(false);
+    for (let i = 0; i < 5; i++) {
+      expect(rl.isBlocked("ip", 0)).toBe(false);
+      rl.recordFailure("ip", 0);
+    }
+    expect(rl.isBlocked("ip", 0)).toBe(true);
   });
 
-  it("autorise de nouveau après la fenêtre", () => {
+  it("débloque après la fenêtre", () => {
     const rl = createRateLimiter(5, 1000);
-    for (let i = 0; i < 6; i++) rl.hit("ip", 0);
-    expect(rl.hit("ip", 999)).toBe(false);
-    expect(rl.hit("ip", 1001)).toBe(true);
+    for (let i = 0; i < 5; i++) rl.recordFailure("ip", 0);
+    expect(rl.isBlocked("ip", 999)).toBe(true);
+    expect(rl.isBlocked("ip", 1001)).toBe(false);
+  });
+
+  it("ne compte que les échecs : vérifier l'état ne consomme rien", () => {
+    const rl = createRateLimiter(1, 1000);
+    for (let i = 0; i < 10; i++) expect(rl.isBlocked("ip", 0)).toBe(false);
+    rl.recordFailure("ip", 0);
+    expect(rl.isBlocked("ip", 0)).toBe(true);
   });
 
   it("compte chaque clé séparément", () => {
     const rl = createRateLimiter(1, 1000);
-    expect(rl.hit("a", 0)).toBe(true);
-    expect(rl.hit("a", 0)).toBe(false);
-    expect(rl.hit("b", 0)).toBe(true);
+    rl.recordFailure("a", 0);
+    expect(rl.isBlocked("a", 0)).toBe(true);
+    expect(rl.isBlocked("b", 0)).toBe(false);
+  });
+
+  it("plafonne le nombre de clés en évinçant la plus ancienne", () => {
+    const rl = createRateLimiter(1, 1_000_000, 3);
+    rl.recordFailure("a", 0);
+    rl.recordFailure("b", 1);
+    rl.recordFailure("c", 2);
+    rl.recordFailure("d", 3); // évince "a"
+    expect(rl.isBlocked("a", 4)).toBe(false);
+    expect(rl.isBlocked("b", 4)).toBe(true);
+    expect(rl.isBlocked("d", 4)).toBe(true);
+  });
+});
+
+describe("clientKey", () => {
+  it("utilise une clé unique sans TRUST_PROXY", () => {
+    expect(clientKey("1.2.3.4", false)).toBe("global");
+    expect(clientKey(null, false)).toBe("global");
+  });
+
+  it("utilise la valeur la plus à droite avec TRUST_PROXY", () => {
+    expect(clientKey("6.6.6.6, 1.2.3.4", true)).toBe("1.2.3.4");
+    expect(clientKey("1.2.3.4", true)).toBe("1.2.3.4");
+    expect(clientKey("1.2.3.4, ", true)).toBe("1.2.3.4");
+  });
+
+  it("retombe sur global si l'en-tête est absent ou vide", () => {
+    expect(clientKey(null, true)).toBe("global");
+    expect(clientKey("", true)).toBe("global");
+    expect(clientKey(" , ", true)).toBe("global");
+  });
+});
+
+describe("safeNext", () => {
+  const origin = "http://localhost:3000";
+
+  it("conserve un chemin interne avec sa requête", () => {
+    expect(safeNext("/transactions?x=1", origin)).toBe("/transactions?x=1");
+    expect(safeNext("/a#b", origin)).toBe("/a#b");
+  });
+
+  it.each([
+    ["//evil.com"],
+    ["/\\evil.com"],
+    ["/\t/evil.com"],
+    ["/\n/evil.com"],
+    ["/\u0000/evil.com"],
+    ["https://evil.com"],
+    ["http://localhost:3000.evil.com/x"],
+    ["javascript:alert(1)"],
+    [null],
+    [""],
+  ])("renvoie / pour %j", (input) => {
+    expect(safeNext(input, origin)).toBe("/");
+  });
+});
+
+describe("isPublicPath", () => {
+  it.each([
+    "/login",
+    "/api/auth/login",
+    "/api/health",
+    "/_next/static/x.js",
+    "/favicon.ico",
+    "/robots.txt",
+    "/icon.svg",
+    "/apple-icon.png",
+    "/manifest.webmanifest",
+  ])("%s est public", (p) => {
+    expect(isPublicPath(p)).toBe(true);
+  });
+
+  it.each([
+    "/",
+    "/transactions",
+    "/foo.json",
+    "/api/health/x",
+    "/api/accounts",
+    "/login/../api/accounts",
+    "/favicon.ico.evil",
+  ])("%s est protégé", (p) => {
+    expect(isPublicPath(p)).toBe(false);
   });
 });

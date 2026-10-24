@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
-
-// N'accepte que les chemins internes (évite les redirections ouvertes).
-function safeNext(): string {
-  const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
-}
+import { safeNext } from "@/lib/auth/safe-next";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -25,7 +20,12 @@ export default function LoginPage() {
         body: JSON.stringify({ password }),
       });
       if (res.ok) {
-        window.location.assign(safeNext());
+        window.location.assign(
+          safeNext(
+            new URLSearchParams(window.location.search).get("next"),
+            window.location.origin,
+          ),
+        );
         return;
       }
       const data = (await res.json().catch(() => null)) as {
