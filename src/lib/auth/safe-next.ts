@@ -8,7 +8,10 @@ export function safeNext(next: string | null, origin: string): string {
   try {
     const url = new URL(next, origin);
     if (url.origin !== origin) return "/";
-    return url.pathname + url.search + url.hash;
+    const result = url.pathname + url.search + url.hash;
+    // Les segments `.`/`..` sont repliés par URL : `/.//evil.com` donne `//evil.com`, que
+    // `location.assign` traite comme une URL relative au protocole.
+    return result.startsWith("//") ? "/" : result;
   } catch {
     return "/";
   }

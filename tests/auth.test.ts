@@ -115,42 +115,59 @@ describe("shouldUseSecureCookie", () => {
 });
 
 describe("createRateLimiter", () => {
-  it("bloque après 5 échecs", () => {
+  it("bloque après 5 réservations, sans attendre", () => {
     const rl = createRateLimiter(5, 1000);
     for (let i = 0; i < 5; i++) {
       expect(rl.isBlocked("ip", 0)).toBe(false);
-      rl.recordFailure("ip", 0);
+      expect(rl.reserve("ip", 0)).not.toBeNull();
     }
     expect(rl.isBlocked("ip", 0)).toBe(true);
+    expect(rl.reserve("ip", 0)).toBeNull();
+  });
+
+  it("libère exactement une réservation", () => {
+    const rl = createRateLimiter(2, 1000);
+    const first = rl.reserve("ip", 0);
+    rl.reserve("ip", 0);
+    expect(rl.isBlocked("ip", 0)).toBe(true);
+    first?.release();
+    expect(rl.isBlocked("ip", 0)).toBe(false);
+    first?.release(); // idempotent : ne retire pas une autre réservation
+    expect(rl.reserve("ip", 0)).not.toBeNull();
+    expect(rl.reserve("ip", 0)).toBeNull();
+  });
+
+  it("ne dépasse jamais max entrées par clé", () => {
+    const rl = createRateLimiter(3, 1000);
+    const granted = Array.from({ length: 20 }, () => rl.reserve("ip", 0)).filter(Boolean);
+    expect(granted).toHaveLength(3);
+    // Libérer 3 réservations remet exactement 3 places (pas d'entrées fantômes).
+    granted.forEach((r) => r?.release());
+    const again = Array.from({ length: 20 }, () => rl.reserve("ip", 0)).filter(Boolean);
+    expect(again).toHaveLength(3);
   });
 
   it("débloque après la fenêtre", () => {
     const rl = createRateLimiter(5, 1000);
-    for (let i = 0; i < 5; i++) rl.recordFailure("ip", 0);
+    for (let i = 0; i < 5; i++) rl.reserve("ip", 0);
     expect(rl.isBlocked("ip", 999)).toBe(true);
     expect(rl.isBlocked("ip", 1001)).toBe(false);
-  });
-
-  it("ne compte que les échecs : vérifier l'état ne consomme rien", () => {
-    const rl = createRateLimiter(1, 1000);
-    for (let i = 0; i < 10; i++) expect(rl.isBlocked("ip", 0)).toBe(false);
-    rl.recordFailure("ip", 0);
-    expect(rl.isBlocked("ip", 0)).toBe(true);
+    expect(rl.reserve("ip", 1001)).not.toBeNull();
   });
 
   it("compte chaque clé séparément", () => {
     const rl = createRateLimiter(1, 1000);
-    rl.recordFailure("a", 0);
+    rl.reserve("a", 0);
     expect(rl.isBlocked("a", 0)).toBe(true);
     expect(rl.isBlocked("b", 0)).toBe(false);
   });
 
   it("plafonne le nombre de clés en évinçant la plus ancienne", () => {
     const rl = createRateLimiter(1, 1_000_000, 3);
-    rl.recordFailure("a", 0);
-    rl.recordFailure("b", 1);
-    rl.recordFailure("c", 2);
-    rl.recordFailure("d", 3); // évince "a"
+    rl.reserve("a", 0);
+    rl.reserve("b", 1);
+    rl.reserve("c", 2);
+    rl.reserve("d", 3); // évince "a"
     expect(rl.isBlocked("a", 4)).toBe(false);
     expect(rl.isBlocked("b", 4)).toBe(true);
     expect(rl.isBlocked("d", 4)).toBe(true);
@@ -190,6 +207,11 @@ describe("safeNext", () => {
     ["/\t/evil.com"],
     ["/\n/evil.com"],
     ["/\u0000/evil.com"],
+    ["/.//evil.com"],
+    ["/..//evil.com"],
+    ["/x/..//evil.com"],
+    ["/%2e//evil.com"],
+    ["/%2E%2E//evil.com/a?b"],
     ["https://evil.com"],
     ["http://localhost:3000.evil.com/x"],
     ["javascript:alert(1)"],

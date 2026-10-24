@@ -37,37 +37,52 @@ export async function POST(request: Request) {
     request.headers.get("x-forwarded-for"),
     process.env.TRUST_PROXY === "true",
   );
-  if (clientLimiter.isBlocked(key) || globalLimiter.isBlocked(GLOBAL_KEY)) {
+  // Réservation synchrone (avant tout await) : une rafale concurrente ne peut pas dépasser les plafonds.
+  const clientReservation = clientLimiter.reserve(key);
+  const globalReservation = clientReservation && globalLimiter.reserve(GLOBAL_KEY);
+  if (!clientReservation || !globalReservation) {
+    clientReservation?.release();
     return Response.json(
       { error: "Trop de tentatives, réessayez dans quelques minutes." },
       { status: 429 },
     );
   }
 
-  let body: unknown;
+  // La réservation reste comptée uniquement si le mot de passe est faux.
+  let failed = false;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Requête invalide" }, { status: 400 });
-  }
-  const parsed = bodySchema.safeParse(body);
-  if (!parsed.success) {
-    return Response.json({ error: "Requête invalide" }, { status: 400 });
-  }
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: "Requête invalide" }, { status: 400 });
+    }
+    const parsed = bodySchema.safeParse(body);
+    if (!parsed.success) {
+      return Response.json({ error: "Requête invalide" }, { status: 400 });
+    }
 
-  if (!(await verifyPassword(parsed.data.password, hash))) {
-    clientLimiter.recordFailure(key);
-    globalLimiter.recordFailure(GLOBAL_KEY);
-    return Response.json({ error: "Mot de passe incorrect" }, { status: 401 });
-  }
+    if (!(await verifyPassword(parsed.data.password, hash))) {
+      failed = true;
+      return Response.json({ error: "Mot de passe incorrect" }, { status: 401 });
+    }
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE, await createSession(), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-    secure: shouldUseSecureCookie(process.env.COOKIE_SECURE, requestProto(request)),
-  });
-  return response;
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set(SESSION_COOKIE, await createSession(), {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      secure: shouldUseSecureCookie(
+        process.env.COOKIE_SECURE,
+        requestProto(request),
+      ),
+    });
+    return response;
+  } finally {
+    if (!failed) {
+      clientReservation.release();
+      globalReservation.release();
+    }
+  }
 }
