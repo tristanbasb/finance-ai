@@ -39,7 +39,7 @@ Livré comme **repo GitHub public** `tristanbasb/finance-ai` (licence MIT) avec
   Migrations appliquées automatiquement au démarrage du serveur.
 - **UI** : Tailwind CSS v4, composants maison style shadcn/ui, icônes `lucide-react`,
   graphiques `recharts`.
-- **Auth** : mot de passe unique. Hash bcrypt stocké dans `.env` (`APP_PASSWORD_HASH`),
+- **Auth** : mot de passe unique. Hash scrypt (crypto Node natif, format `scrypt:<sel hex>:<hash hex>`, sans `$` pour éviter l’interpolation docker compose) stocké dans `.env` (`APP_PASSWORD_HASH`),
   session = JWT signé (`jose`, secret `SESSION_SECRET`) en cookie httpOnly, SameSite=Lax,
   `Secure` si HTTPS. Middleware protégeant toutes les routes sauf `/login` et
   `/api/health`. Limitation des tentatives de connexion en mémoire (5 / 15 min / IP).
@@ -89,8 +89,7 @@ Autres revenus).
 
 ## 5. IA (API Claude)
 
-- SDK officiel `@anthropic-ai/sdk`. Modèle via `CLAUDE_MODEL` (défaut : le modèle Claude
-  le plus récent et capable au moment du développement).
+- SDK officiel `@anthropic-ai/sdk`. Modèle via `CLAUDE_MODEL` (défaut : `claude-opus-5-5`).
 - **Chat** (`/api/ai/chat`) : streaming SSE, boucle d'outils côté serveur. Outils :
   `get_overview` (soldes, patrimoine, mois en cours), `search_transactions`
   (filtres date/catégorie/texte/montant), `spending_by_category` (période),
@@ -129,8 +128,8 @@ Autres revenus).
 2. Vérifie `git`, Docker et `docker compose` ; propose d'installer Docker via le
    script officiel `get.docker.com` (confirmation demandée).
 3. Si lancé hors du repo (via curl), clone le repo dans `~/finance-ai`.
-4. Crée `.env` de façon interactive : mot de passe (haché via un conteneur Node
-   éphémère / l'image construite), `SESSION_SECRET` aléatoire, `ANTHROPIC_API_KEY`
+4. Build l’image, puis crée `.env` de façon interactive : mot de passe (haché par `docker run --rm` de l’image avec `scripts/hash-password.mjs`),
+   `SESSION_SECRET` aléatoire, `ANTHROPIC_API_KEY`
    (optionnelle), `CLAUDE_MODEL`, `APP_PORT`. Ne réécrit pas un `.env` existant.
 5. `docker compose up -d --build`, attend le healthcheck, affiche l'URL.
 
