@@ -1,15 +1,15 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { CircleAlert, CircleCheck, Info, X } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type ToastVariant = "default" | "success" | "error";
+export type ToastVariant = "default" | "success" | "warning" | "error";
 
 export type ToastOptions = {
   variant?: ToastVariant;
   description?: string;
-  /** Durée d'affichage en ms (défaut 4 s, 6 s pour une erreur). */
+  /** Durée d'affichage en ms (défaut 4 s, 6 s pour un avertissement ou une erreur). */
   duration?: number;
 };
 
@@ -45,19 +45,22 @@ export function toast(message: string, options: ToastOptions = {}): number {
   const variant = options.variant ?? "default";
   items = [...items, { id, message, description: options.description, variant }].slice(-MAX_VISIBLE);
   emit();
-  const duration = options.duration ?? (variant === "error" ? 6000 : 4000);
+  const duration = options.duration ?? (variant === "error" || variant === "warning" ? 6000 : 4000);
   setTimeout(() => dismissToast(id), duration);
   return id;
 }
 
 toast.success = (message: string, options: Omit<ToastOptions, "variant"> = {}) =>
   toast(message, { ...options, variant: "success" });
+toast.warning = (message: string, options: Omit<ToastOptions, "variant"> = {}) =>
+  toast(message, { ...options, variant: "warning" });
 toast.error = (message: string, options: Omit<ToastOptions, "variant"> = {}) =>
   toast(message, { ...options, variant: "error" });
 
 const icons = {
   default: <Info aria-hidden className="size-4 text-muted" />,
   success: <CircleCheck aria-hidden className="size-4 text-positive" />,
+  warning: <TriangleAlert aria-hidden className="size-4 text-warning" />,
   error: <CircleAlert aria-hidden className="size-4 text-danger" />,
 } as const;
 
