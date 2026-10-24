@@ -319,16 +319,17 @@ prune_host_backups() {
 
 # host_copy_backup <nom> : copie brute data/finance.db (+ -wal, -shm) vers backups/<nom>*,
 # en conservant le propriétaire (UID 1001) et en droits 600. Utilisé seulement sans image.
+# Renvoie 1 dès qu'une copie échoue (appelée dans un if : errexit n'y joue pas).
 host_copy_backup() {
   local name="$1" f dest
   for f in data/finance.db data/finance.db-wal data/finance.db-shm; do
     dest="backups/$name${f#data/finance.db}"
     if [ -r data ] && [ -x data ] && [ -w backups ]; then
       [ -f "$f" ] || continue
-      cp -p "$f" "$dest" && chmod 600 "$dest"
+      { cp -p "$f" "$dest" && chmod 600 "$dest"; } || return 1
     else
       as_root test -f "$f" || continue
-      as_root cp -p "$f" "$dest" && as_root chmod 600 "$dest"
+      { as_root cp -p "$f" "$dest" && as_root chmod 600 "$dest"; } || return 1
     fi
   done
 }
@@ -375,6 +376,22 @@ restore_command() {
   local b="/app/$1"
   printf '%s run --rm --no-deps app sh -c '"'"'rm -f /app/data/finance.db-wal /app/data/finance.db-shm && cp %s /app/data/finance.db && if [ -f %s-wal ]; then cp %s-wal /app/data/finance.db-wal; fi'"'"'\n' \
     "${COMPOSE[*]}" "$b" "$b" "$b"
+}
+
+# secure_data_dirs : data/ et backups/ en 700 (installations antérieures). Linux uniquement ;
+# un échec n'est qu'un avertissement.
+secure_data_dirs() {
+  [ "$(uname -s)" = "Linux" ] || return 0
+  local d
+  for d in data backups; do
+    [ -d "$d" ] || continue
+    [ "$(stat -c '%a' "$d")" != "700" ] || continue
+    if chmod 700 "$d" 2>/dev/null || (as_root chmod 700 "$d") 2>/dev/null; then
+      info "Droits de $d/ resserrés (700)."
+    else
+      warn "Impossible de passer $d/ en 700 (droits insuffisants) : faites-le avec sudo chmod 700 $d."
+    fi
+  done
 }
 
 # ---------------------------------------------------------------------------

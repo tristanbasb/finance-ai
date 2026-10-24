@@ -9,7 +9,8 @@
 #   ANTHROPIC_API_KEY     clé API Claude (définie mais vide = pas d'IA)
 #   CLAUDE_MODEL          modèle Claude (défaut claude-opus-5-5)
 #   APP_PORT              port HTTP publié (défaut 3000)
-#   FINANCE_AI_YES=1      répond « oui » aux confirmations (ex. installation de Docker)
+#   FINANCE_AI_YES=1      aucune question : « oui » aux confirmations (ex. installation de Docker),
+#                         valeurs par défaut ailleurs ; FINANCE_AI_PASSWORD devient obligatoire
 #   FINANCE_AI_DIR        dossier d'installation en mode curl (défaut ~/finance-ai)
 #   FINANCE_AI_REPO       dépôt git à cloner en mode curl (défaut : dépôt officiel, utile pour un fork)
 set -euo pipefail

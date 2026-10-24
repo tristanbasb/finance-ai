@@ -88,6 +88,7 @@ main() {
   deployed="$(deployed_commit)"
   PREV_COMMIT="${deployed:-$(git rev-parse HEAD)}"
 
+  secure_data_dirs
   backup_db
 
   info "Récupération de la dernière version…"
