@@ -22,6 +22,7 @@ backups/
 
 # outillage
 .superpowers/
+.claude/
 
 # généré par next dev
 AGENTS.md
