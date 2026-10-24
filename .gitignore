@@ -1,0 +1,23 @@
+# dépendances
+node_modules
+
+# build
+.next
+out
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# environnement
+.env
+.env.*
+!.env.example
+
+# données locales
+data/
+backups/
+*.db
+*.db-*
+
+# outillage
+.superpowers/
