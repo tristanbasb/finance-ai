@@ -1,1 +1,134 @@
 @import "tailwindcss";
+
+/*
+ * Jetons de design Finance AI.
+ * Les valeurs vivent dans des variables CSS (clair par défaut, sombre via
+ * prefers-color-scheme) ; @theme inline les expose aux utilitaires Tailwind
+ * (bg-surface, text-muted, border-border, bg-accent…).
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #e3e6eb;
+  --border-strong: #cfd4dc;
+  --fg: #0d1117;
+  --fg-muted: #586070;
+  --fg-subtle: #8a91a0;
+  --accent: #3157d5;
+  --accent-fg: #ffffff;
+  --accent-soft: #eaeffc;
+  --positive: #0f7f4a;
+  --positive-soft: #e6f4ec;
+  --warning: #b86e00;
+  --warning-fill: #e59a1a;
+  --warning-soft: #fdf3e2;
+  --danger: #c93636;
+  --danger-soft: #fbeaea;
+  --grid: #eceef2;
+  --ring: #3157d5;
+  --shadow-pop: 0 12px 32px -12px rgb(13 17 23 / 0.18), 0 2px 6px -2px rgb(13 17 23 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0a0c10;
+    --surface: #12151b;
+    --surface-2: #1a1e26;
+    --border: #232833;
+    --border-strong: #323946;
+    --fg: #eef0f4;
+    --fg-muted: #a2a9b6;
+    --fg-subtle: #6e7684;
+    --accent: #6b8af2;
+    --accent-fg: #0a0c10;
+    --accent-soft: #1b2340;
+    --positive: #3ecf8e;
+    --positive-soft: #12271d;
+    --warning: #f2b441;
+    --warning-fill: #f2b441;
+    --warning-soft: #2a2110;
+    --danger: #f07272;
+    --danger-soft: #2c1517;
+    --grid: #1d212a;
+    --ring: #6b8af2;
+    --shadow-pop: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-warning: var(--warning);
+  --color-warning-fill: var(--warning-fill);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-grid: var(--grid);
+  --color-ring: var(--ring);
+
+  --shadow-pop: var(--shadow-pop);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Le fond du <dialog> natif suit les jetons. */
+  dialog::backdrop {
+    background: rgb(10 12 16 / 0.45);
+    backdrop-filter: blur(2px);
+  }
+}
+
+/* Chiffres tabulaires : pour les montants alignés (listes, tableaux, axes). */
+@utility num {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

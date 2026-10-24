@@ -3,6 +3,9 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { safeNext } from "@/lib/auth/safe-next";
+import { BrandMark } from "@/components/brand-mark";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -39,45 +42,35 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 dark:bg-neutral-950">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-5 rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-      >
-        <h1 className="text-center text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-          Finance AI
-        </h1>
-        <div className="space-y-2">
-          <label
-            htmlFor="password"
-            className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
-          >
-            Mot de passe
-          </label>
-          <input
+    <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-12">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center gap-4 text-center">
+          <BrandMark className="size-11" />
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg">Finance AI</h1>
+            <p className="text-sm text-muted">Connectez-vous pour accéder à vos finances.</p>
+          </div>
+        </div>
+        <form
+          onSubmit={onSubmit}
+          className="space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-pop sm:p-7"
+        >
+          <Input
             id="password"
+            label="Mot de passe"
             type="password"
             autoComplete="current-password"
             autoFocus
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50 dark:focus:border-neutral-300 dark:focus:ring-neutral-300/20"
+            error={error}
           />
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-neutral-900 px-4 py-2 font-medium text-white transition hover:bg-neutral-700 disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-        >
-          {loading ? "Connexion…" : "Se connecter"}
-        </button>
-      </form>
+          <Button type="submit" size="lg" loading={loading} className="w-full">
+            {loading ? "Connexion…" : "Se connecter"}
+          </Button>
+        </form>
+      </div>
     </main>
   );
 }
