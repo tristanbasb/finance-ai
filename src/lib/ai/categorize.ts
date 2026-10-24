@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { requireAi, type Ai } from "./client";
@@ -21,8 +20,8 @@ const SYSTEM = `Tu classes des libellés de transactions bancaires françaises d
 /**
  * Suggère une catégorie pour chaque libellé (même ordre ; null si aucune). Un seul appel par
  * lot de 500 libellés au plus, en sortie structurée. Les ids hors liste deviennent null ; une
- * réponse de mauvaise forme ou de mauvaise longueur donne tout à null. Seules les erreurs de
- * l'API ou du réseau sont levées.
+ * réponse vide ou de mauvaise longueur donne tout à null. Les erreurs de l'API, du réseau et
+ * de lecture de la sortie structurée (`AnthropicError`) sont levées.
  */
 export async function categorize(
   labels: string[],
@@ -42,29 +41,22 @@ export async function categorize(
   }));
   const numbered = labels.map((label, index) => ({ index, label: label.slice(0, 300) }));
 
-  let parsed: z.infer<typeof output> | null;
-  try {
-    const message = await ai.client.messages.parse({
-      model: ai.model,
-      max_tokens: 16000,
-      system: SYSTEM,
-      output_config: { effort: "low", format: zodOutputFormat(output) },
-      messages: [
-        {
-          role: "user",
-          content:
-            `Catégories disponibles (JSON) :\n${JSON.stringify(catalog)}\n\n` +
-            `Libellés à classer (JSON, ${labels.length} éléments) :\n${JSON.stringify(numbered)}`,
-        },
-      ],
-    });
-    parsed = message.parsed_output ?? null;
-  } catch (err) {
-    // Erreur d'API / réseau : propagée (→ 429 / 502). Sortie illisible ou hors schéma : tout à null.
-    if (err instanceof Anthropic.APIError || !(err instanceof Anthropic.AnthropicError)) throw err;
-    console.error("[ai] catégorisation : sortie inexploitable :", err.message);
-    return none;
-  }
+  // Erreurs d'API / réseau et sortie structurée illisible (AnthropicError) : propagées (→ 429 / 502).
+  const message = await ai.client.messages.parse({
+    model: ai.model,
+    max_tokens: 16000,
+    system: SYSTEM,
+    output_config: { effort: "low", format: zodOutputFormat(output) },
+    messages: [
+      {
+        role: "user",
+        content:
+          `Catégories disponibles (JSON) :\n${JSON.stringify(catalog)}\n\n` +
+          `Libellés à classer (JSON, ${labels.length} éléments) :\n${JSON.stringify(numbered)}`,
+      },
+    ],
+  });
+  const parsed = message.parsed_output ?? null;
 
   if (!parsed || parsed.results.length !== labels.length) return none;
   const ids: (number | null)[] = [...none];

@@ -84,6 +84,9 @@ export async function* runChat({
         max_tokens: 16000,
         system,
         tools: aiTools,
+        // Cache automatique sur le dernier bloc : les tours 2 à 8 relisent l'historique en cache.
+        // Avec le point explicite du prompt système : 2 points d'arrêt sur 4.
+        cache_control: { type: "ephemeral" },
         ...(last ? { tool_choice: { type: "none" } as const } : {}),
         messages: history,
       },

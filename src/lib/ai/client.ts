@@ -54,8 +54,8 @@ export function isAbortError(err: unknown): boolean {
 }
 
 /**
- * Traduit une erreur de l'API Claude (ou d'indisponibilité IA) en statut HTTP + message français.
- * Renvoie null pour toute autre erreur. Journalise côté serveur sans la clé ni les en-têtes.
+ * Traduit une erreur de l'API Claude, du SDK (sortie illisible) ou d'indisponibilité IA en statut
+ * HTTP + message français. Renvoie null pour une annulation ou toute autre erreur. Journalise côté serveur sans la clé ni les en-têtes.
  */
 export function aiErrorInfo(err: unknown): { status: number; message: string } | null {
   if (err instanceof AiDisabledError) return { status: 503, message: AI_DISABLED_MESSAGE };
@@ -63,7 +63,12 @@ export function aiErrorInfo(err: unknown): { status: number; message: string } |
     console.error("[ai] réponse inexploitable :", err.message);
     return { status: 502, message: "Le service Claude est indisponible." };
   }
-  if (!(err instanceof Anthropic.APIError)) return null;
+  if (!(err instanceof Anthropic.AnthropicError) || isAbortError(err)) return null;
+  if (!(err instanceof Anthropic.APIError)) {
+    // Erreur du SDK hors HTTP : sortie structurée illisible (coupée par max_tokens, refus…).
+    console.error(`[ai] réponse Claude inexploitable : ${err.message}`);
+    return { status: 502, message: "Le service Claude est indisponible." };
+  }
   console.error(
     `[ai] erreur API Claude : type=${err.type ?? "-"} status=${err.status ?? "-"} request_id=${err.requestID ?? "-"} — ${err.message}`,
   );

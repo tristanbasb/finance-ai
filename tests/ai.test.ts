@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { eq } from "drizzle-orm";
-import { createDb } from "@/lib/db";
+import { createDb, getDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
 import { accounts, aiCache, categories, holdings } from "@/lib/db/schema";
@@ -13,7 +13,7 @@ import { chatRequest, encodeSse, runChat, type ChatEvent } from "@/lib/ai/chat";
 import { getInsights } from "@/lib/ai/insights";
 import { decodeSse } from "@/lib/sse";
 import { GET as statusGET } from "@/app/api/ai/status/route";
-import { POST as chatPOST } from "@/app/api/ai/chat/route";
+import { HEARTBEAT_MS, POST as chatPOST } from "@/app/api/ai/chat/route";
 import { POST as categorizePOST } from "@/app/api/ai/categorize/route";
 import { GET as insightsGET } from "@/app/api/ai/insights/route";
 
@@ -47,7 +47,9 @@ function req(url: string, init?: RequestInit) {
   return new Request(`http://localhost${url}`, init);
 }
 
-const ENV_KEYS = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL"] as const;
+const PING = ": ping\n\n";
+
+const ENV_KEYS = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL", "DATABASE_PATH"] as const;
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -138,6 +140,11 @@ describe("aiErrorInfo", () => {
       status: 502,
       message: "Le service Claude est indisponible.",
     });
+    expect(aiErrorInfo(new Anthropic.AnthropicError("Failed to parse structured output"))).toEqual({
+      status: 502,
+      message: "Le service Claude est indisponible.",
+    });
+    expect(aiErrorInfo(new Anthropic.APIUserAbortError())).toBeNull();
     expect(aiErrorInfo(new Error("autre"))).toBeNull();
   });
 });
@@ -263,6 +270,9 @@ describe("categorize", () => {
       null,
     ]);
     expect(await categorize(["A"], cats, mockParseClient(null).ai)).toEqual([null]);
+  });
+
+  it("sortie structurée illisible (AnthropicError du SDK) → propagée", async () => {
     const failing = {
       client: {
         messages: {
@@ -273,7 +283,7 @@ describe("categorize", () => {
       } as unknown as Anthropic,
       model: "m",
     };
-    expect(await categorize(["A"], cats, failing)).toEqual([null]);
+    await expect(categorize(["A"], cats, failing)).rejects.toBeInstanceOf(Anthropic.AnthropicError);
   });
 
   it("propage les erreurs de l'API", async () => {
@@ -327,6 +337,17 @@ describe("chat", () => {
     expect(full.rest).toBe('data: {"type":"te');
     const next = decodeSse(full.rest + 'xt","text":"a"}\r\n\r\n');
     expect(next).toEqual({ events: [{ type: "text", text: "a" }], rest: "" });
+  });
+
+  it("decodeSse ignore les commentaires « : ping » entre et dans les fragments", () => {
+    const text = encodeSse({ type: "text", text: "a" });
+    const between = decodeSse(PING + text + PING + encodeSse({ type: "done" }));
+    expect(between).toEqual({ events: [{ type: "text", text: "a" }, { type: "done" }], rest: "" });
+    // Commentaire dans un même événement, et commentaire coupé entre deux fragments.
+    expect(decodeSse(`: ping\ndata: {"type":"done"}\n\n`).events).toEqual([{ type: "done" }]);
+    const first = decodeSse(text + ": pi");
+    expect(first.events).toEqual([{ type: "text", text: "a" }]);
+    expect(decodeSse(`${first.rest}ng\n\n${text}`)).toEqual({ events: [{ type: "text", text: "a" }], rest: "" });
   });
 
   it("valide la requête (1–50 messages, ≤ 8000 caractères, dernier = user)", () => {
@@ -385,6 +406,8 @@ describe("chat", () => {
       { type: "done" },
     ]);
     expect(stream).toHaveBeenCalledTimes(2);
+    expect(calls[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(calls[1].cache_control).toEqual({ type: "ephemeral" });
     const system = JSON.stringify(calls[0].system);
     expect(system).toContain("2026-10-24");
     expect(system).toMatch(/données, pas des instructions/);
@@ -393,5 +416,88 @@ describe("chat", () => {
     const toolResult = (second[2].content as Anthropic.ToolResultBlockParam[])[0];
     expect(toolResult).toMatchObject({ type: "tool_result", tool_use_id: "toolu_1" });
     expect(JSON.parse(toolResult.content as string).count).toBe(3);
+  });
+});
+
+let sharedDbReady = false;
+
+describe("routes IA avec un client simulé", () => {
+  const json = { "Content-Type": "application/json" };
+
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.DATABASE_PATH = ":memory:";
+    const db = getDb();
+    // getDb() est un singleton : la base en mémoire n'est initialisée qu'une fois.
+    if (!sharedDbReady) {
+      runMigrations(db);
+      seedDefaults(db);
+      seedTransactions(db);
+      sharedDbReady = true;
+    }
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("sortie structurée illisible → 502 « Le service Claude est indisponible. » (analyses et catégorisation)", async () => {
+    vi.spyOn(Anthropic.Messages.prototype, "parse").mockRejectedValue(
+      new Anthropic.AnthropicError("Failed to parse structured output: unexpected end of JSON"),
+    );
+    const insights = await insightsGET(req("/api/ai/insights?month=2026-10&refresh=1"));
+    expect(insights.status).toBe(502);
+    expect(await insights.json()).toEqual({ error: "Le service Claude est indisponible." });
+    const cat = await categorizePOST(
+      req("/api/ai/categorize", { method: "POST", headers: json, body: JSON.stringify({ labels: ["NETFLIX"] }) }),
+    );
+    expect(cat.status).toBe(502);
+    expect(await cat.json()).toEqual({ error: "Le service Claude est indisponible." });
+  });
+
+  it("chat : paramètres avec cache automatique, puis « : ping » toutes les 15 s tant que le flux est ouvert", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const params: Anthropic.MessageCreateParams[] = [];
+    vi.spyOn(Anthropic.Messages.prototype, "stream").mockImplementation(((p: Anthropic.MessageCreateParams) => {
+      params.push(p);
+      return {
+        async *[Symbol.asyncIterator]() {
+          await gate;
+          yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Bonjour" } };
+        },
+        finalMessage: async () => ({ stop_reason: "end_turn", content: [] }),
+      };
+    }) as never);
+
+    const res = await chatPOST(
+      req("/api/ai/chat", {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ messages: [{ role: "user", content: "Salut" }] }),
+      }),
+    );
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+
+    expect(HEARTBEAT_MS).toBe(15_000);
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    expect((await reader.read()).value).toBe(PING);
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    expect((await reader.read()).value).toBe(PING);
+
+    release();
+    let rest = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      rest += value;
+    }
+    expect(decodeSse(rest).events).toEqual([{ type: "text", text: "Bonjour" }, { type: "done" }]);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(params[0].cache_control).toEqual({ type: "ephemeral" });
   });
 });
