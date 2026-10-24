@@ -21,11 +21,29 @@ const DELIMITERS: Delimiter[] = [";", ",", "\t"];
 function detectDelimiter(text: string): Delimiter {
   const counts = new Map<Delimiter, number>(DELIMITERS.map((d) => [d, 0]));
   let inQuotes = false;
+  let fieldStart = true; // un guillemet n'ouvre un champ entre guillemets qu'en début de champ
+  let justClosed = false; // un guillemet juste après une fermeture = guillemet doublé (rouvre)
   for (const ch of text) {
-    if (ch === '"') inQuotes = !inQuotes;
-    else if (!inQuotes && (ch === "\n" || ch === "\r")) break;
-    else if (!inQuotes && counts.has(ch as Delimiter)) {
+    if (inQuotes) {
+      if (ch === '"') {
+        inQuotes = false;
+        justClosed = true;
+      }
+      continue;
+    }
+    if (ch === '"' && (fieldStart || justClosed)) {
+      inQuotes = true;
+      fieldStart = false;
+      justClosed = false;
+      continue;
+    }
+    justClosed = false;
+    if (ch === "\n" || ch === "\r") break;
+    if (counts.has(ch as Delimiter)) {
       counts.set(ch as Delimiter, counts.get(ch as Delimiter)! + 1);
+      fieldStart = true;
+    } else if (ch !== " ") {
+      fieldStart = false;
     }
   }
   let best: Delimiter = ";";
@@ -52,10 +70,12 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][]; d
   let record: string[] = [];
   let field = "";
   let inQuotes = false;
+  let quoted = false; // le champ courant a été ouvert par un guillemet
 
   const endField = () => {
     record.push(field.trim());
     field = "";
+    quoted = false;
   };
   const endRecord = () => {
     endField();
@@ -71,8 +91,10 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][]; d
         field += '"';
         i++;
       } else inQuotes = false;
-    } else if (ch === '"') {
+    } else if (ch === '"' && !quoted && field.trim() === "") {
+      // Le mode guillemets ne commence qu'en début de champ ; ailleurs, " est un caractère littéral.
       inQuotes = true;
+      quoted = true;
     } else if (ch === delimiter) {
       endField();
     } else if (ch === "\n" || ch === "\r") {
@@ -108,7 +130,9 @@ export function guessMapping(headers: string[]): Partial<CsvMapping> {
   const normalized = headers.map(normalize);
   const result: Partial<CsvMapping> = {};
   const used = new Set<number>();
-  for (const key of Object.keys(KEYWORDS) as (keyof CsvMapping)[]) {
+  // Débit/crédit d'abord : « Montant débit » ne doit pas être pris pour la colonne montant,
+  // et une colonne montant n'est cherchée que si ni débit ni crédit n'existent.
+  for (const key of ["date", "label", "debit", "credit"] as const) {
     const idx = normalized.findIndex(
       (h, i) => !used.has(i) && KEYWORDS[key].some((kw) => h.includes(kw)),
     );
@@ -117,12 +141,22 @@ export function guessMapping(headers: string[]): Partial<CsvMapping> {
       used.add(idx);
     }
   }
+  if (result.debit === undefined && result.credit === undefined) {
+    const idx = normalized.findIndex(
+      (h, i) => !used.has(i) && KEYWORDS.amount.some((kw) => h.includes(kw)),
+    );
+    if (idx >= 0) result.amount = idx;
+  }
   return result;
 }
 
 /** Montant de la ligne : colonne unique signée, ou débit (négatif) / crédit (positif). */
 function rowAmount(row: string[], m: CsvMapping): number | "missing" | "invalid" {
-  const cell = (i: number | undefined) => (i === undefined ? "" : (row[i] ?? "").trim());
+  // Une cellule réduite à un tiret (« - », « – ») signifie « vide » dans beaucoup d'exports.
+  const cell = (i: number | undefined) => {
+    const v = i === undefined ? "" : (row[i] ?? "").trim();
+    return /^[-–—]$/.test(v) ? "" : v;
+  };
   if (m.amount !== undefined) {
     const raw = cell(m.amount);
     if (raw === "") return "missing";

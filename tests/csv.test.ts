@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { guessMapping, mapRows, parseCsv } from "@/lib/csv";
+import { guessMapping, mapRows, parseCsv, type CsvMapping } from "@/lib/csv";
 
 describe("parseCsv", () => {
   it("retire le BOM et détecte le délimiteur ;", () => {
@@ -35,6 +37,22 @@ describe("parseCsv", () => {
     const r = parseCsv('"a,b,c,d";x;y\n1;2;3');
     expect(r.delimiter).toBe(";");
   });
+  it("traite un guillemet au milieu d'un champ non entouré de guillemets comme un caractère littéral", () => {
+    const r = parseCsv('Libellé;Montant\n5" pizza;1\n2;3');
+    expect(r.headers).toEqual(["Libellé", "Montant"]);
+    expect(r.rows).toEqual([
+      ['5" pizza', "1"],
+      ["2", "3"],
+    ]);
+  });
+  it("détecte le délimiteur malgré un guillemet littéral au milieu d'un champ", () => {
+    const r = parseCsv('Libellé,Montant\n5" pizza,1\n2,3');
+    expect(r.delimiter).toBe(",");
+    expect(r.rows).toEqual([
+      ['5" pizza', "1"],
+      ["2", "3"],
+    ]);
+  });
   it("retourne un résultat vide pour un texte vide", () => {
     expect(parseCsv("")).toEqual({ headers: [], rows: [], delimiter: ";" });
   });
@@ -56,6 +74,14 @@ describe("guessMapping", () => {
       credit: 3,
     });
     expect(guessMapping(["date", "label", "amount"])).toEqual({ date: 0, label: 1, amount: 2 });
+  });
+  it("mappe « Montant débit » / « Montant crédit » sur debit / credit, sans colonne amount", () => {
+    expect(guessMapping(["Date", "Libellé", "Montant débit", "Montant crédit"])).toEqual({
+      date: 0,
+      label: 1,
+      debit: 2,
+      credit: 3,
+    });
   });
   it("ne devine rien quand aucun mot-clé ne correspond", () => {
     expect(guessMapping(["foo", "bar"])).toEqual({});
@@ -107,6 +133,19 @@ describe("mapRows", () => {
       { line: 5, reason: "Montant invalide" },
     ]);
   });
+  it("traite une cellule réduite à un tiret comme vide", () => {
+    const m = { date: 0, label: 1, debit: 2, credit: 3 };
+    const { valid, errors } = mapRows(
+      [
+        ["24/10/2026", "a", "5,00", "-"],
+        ["24/10/2026", "b", "–", "7,00"],
+        ["24/10/2026", "c", "-", "-"],
+      ],
+      m,
+    );
+    expect(valid.map((v) => v.amount)).toEqual([-500, 700]);
+    expect(errors).toEqual([{ line: 4, reason: "Montant manquant" }]);
+  });
   it("signale une ligne sans aucun montant", () => {
     const { errors } = mapRows([["24/10/2026", "x", "", ""]], {
       date: 0,
@@ -115,5 +154,30 @@ describe("mapRows", () => {
       credit: 3,
     });
     expect(errors).toEqual([{ line: 2, reason: "Montant manquant" }]);
+  });
+});
+
+describe("relevé bancaire d'exemple (tests/fixtures/releve.csv)", () => {
+  const text = readFileSync(fileURLToPath(new URL("./fixtures/releve.csv", import.meta.url)), "utf8");
+
+  it("enchaîne parseCsv, guessMapping et mapRows de bout en bout", () => {
+    const { headers, rows, delimiter } = parseCsv(text);
+    expect(delimiter).toBe(";");
+    expect(headers).toEqual(["Date", "Libellé", "Débit", "Crédit"]);
+    expect(rows).toHaveLength(7);
+
+    const guess = guessMapping(headers);
+    expect(guess).toEqual({ date: 0, label: 1, debit: 2, credit: 3 });
+
+    const { valid, errors } = mapRows(rows, guess as CsvMapping);
+    expect(errors).toEqual([{ line: 5, reason: "Date invalide" }]);
+    expect(valid).toEqual([
+      { date: "2026-10-02", label: "CARTE CARREFOUR MARKET", amount: -4560 },
+      { date: "2026-10-03", label: "PRLV EDF; CONTRAT 123", amount: -7210 },
+      { date: "2026-10-05", label: "VIREMENT SALAIRE OCTOBRE", amount: 245000 },
+      { date: "2026-10-08", label: 'CARTE BOULANGERIE "AU FOURNIL"', amount: -320 },
+      { date: "2026-10-10", label: "REMBOURSEMENT AMI", amount: 2500 },
+      { date: "2026-10-12", label: "ABONNEMENT NETFLIX", amount: -1349 },
+    ]);
   });
 });
