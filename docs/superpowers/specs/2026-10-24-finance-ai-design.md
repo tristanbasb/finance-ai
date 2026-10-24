@@ -1,5 +1,16 @@
 # Finance AI — Spécification de conception
 
+> **Écarts de l'implémentation (v1).** Cette spécification est conservée telle qu'approuvée ;
+> le code s'en écarte sur ces points :
+>
+> - **Next.js 16** (et non 15) : le middleware d'authentification s'appelle désormais
+>   `src/proxy.ts` (convention « proxy » de Next.js 16).
+> - Image Docker basée sur **`node:22-bookworm-slim`** (et non Alpine) : binaires précompilés
+>   de better-sqlite3 (glibc), sans chaîne de compilation.
+> - **Prix unitaires** des positions (`avg_price`, `manual_price`, cours en cache) stockés en
+>   **centimes réels (REAL)** pour garder la précision des cours fractionnaires ; les montants
+>   (transactions, soldes, totaux) restent en centimes entiers.
+
 Date : 2026-10-24
 Statut : approuvée (conversation), en revue écrite
 

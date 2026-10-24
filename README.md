@@ -100,6 +100,7 @@ Toute la configuration est dans le fichier `.env` à la racine du dépôt (modè
 | `SESSION_SECRET` | aléatoire | Secret de signature des sessions (≥ 32 caractères) ; le changer déconnecte tout le monde |
 | `ANTHROPIC_API_KEY` | vide | Clé API Claude ; sans clé, les fonctions IA sont désactivées |
 | `CLAUDE_MODEL` | `claude-opus-5-5` | Modèle utilisé par l'assistant |
+| `TZ` | `Europe/Paris` | Fuseau horaire (date du jour, mois en cours, instantanés quotidiens) |
 | `APP_PORT` | `3000` | Port publié sur l'hôte |
 | `APP_BIND` | `0.0.0.0` | Adresse d'écoute sur l'hôte ; `127.0.0.1` derrière un reverse proxy |
 | `COOKIE_SECURE` | `auto` | Cookie `Secure` : `auto` (si HTTPS), `true` ou `false` |
@@ -138,9 +139,12 @@ finance.example.com {
 Puis dans `.env` :
 
 ```ini
-APP_BIND=127.0.0.1   # l'application n'est plus joignable directement, seulement via Caddy
-TRUST_PROXY=true     # limitation des tentatives de connexion par adresse IP réelle
-COOKIE_SECURE=auto   # cookie Secure automatiquement, car Caddy transmet X-Forwarded-Proto: https
+# l'application n'est plus joignable directement, seulement via Caddy
+APP_BIND=127.0.0.1
+# limitation des tentatives de connexion par adresse IP réelle
+TRUST_PROXY=true
+# cookie Secure automatiquement, car Caddy transmet X-Forwarded-Proto: https
+COOKIE_SECURE=auto
 ```
 
 et `docker compose up -d`.
@@ -151,6 +155,12 @@ et `docker compose up -d`.
 > joignable directement (`APP_BIND=127.0.0.1`). Sinon, n'importe qui peut forger l'en-tête et
 > contourner la limite par IP. Avec `false` (défaut), la limite (5 échecs / 15 min) est
 > commune à tous les clients.
+
+> **Le proxy doit transmettre l'en-tête `Host` d'origine** (Caddy le fait par défaut ; avec
+> Nginx : `proxy_set_header Host $host;`). Les requêtes qui modifient des données sont refusées
+> (403 « Requête refusée ») quand leur `Origin` ne correspond pas à l'hôte demandé : c'est la
+> protection contre les requêtes envoyées depuis un autre site. Si le proxy réécrit `Host`,
+> `X-Forwarded-Host` est utilisé à la place avec `TRUST_PROXY=true`.
 
 > Docker publie ses ports en contournant certains pare-feux (ufw). `APP_BIND=127.0.0.1` est
 > le moyen fiable de n'exposer l'application que via le reverse proxy.

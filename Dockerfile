@@ -21,11 +21,13 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
+# TZ : fuseau des dates « du jour » (mois en cours, instantanés) ; modifiable via TZ= dans .env.
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     DATABASE_PATH=/app/data/finance.db \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    TZ=Europe/Paris
 
 # Utilisateur non-root (UID/GID 1001 : install.sh donne ./data et ./backups à cet UID).
 RUN groupadd --system --gid 1001 app \
