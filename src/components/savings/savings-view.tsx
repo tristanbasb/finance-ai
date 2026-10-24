@@ -73,7 +73,7 @@ export function SavingsView({ savingsAccounts, goalAccounts, goals, today }: Sav
             title="Aucun compte d'épargne"
             description="Créez un compte de type Épargne (Livret A, LDDS…) pour suivre votre capital."
             action={
-              <Link href="/settings" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+              <Link href="/settings#comptes" className={buttonClasses({ variant: "secondary", size: "sm" })}>
                 Ouvrir les réglages
               </Link>
             }

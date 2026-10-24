@@ -104,7 +104,7 @@ export function AiInsightsCard({ month, monthLabel }: { month: string; monthLabe
         {state.kind === "disabled" && (
           <div className="space-y-3 text-[13px] leading-relaxed text-muted">
             <p>Ajoutez votre clé API Claude pour activer les analyses.</p>
-            <Link href="/settings" className="inline-flex font-medium text-accent hover:underline">
+            <Link href="/settings#ia" className="inline-flex font-medium text-accent hover:underline">
               Ouvrir les réglages
             </Link>
           </div>

@@ -212,7 +212,7 @@ export function HoldingDialog({ open, onClose, accounts, holding }: HoldingDialo
             <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
             <p>
               Aucun compte d&apos;investissement n&apos;existe encore.{" "}
-              <Link href="/settings" className="font-medium text-accent underline underline-offset-2">
+              <Link href="/settings#comptes" className="font-medium text-accent underline underline-offset-2">
                 Créez un compte de type Investissement ou Crypto dans les réglages
               </Link>
               , puis revenez ajouter votre position.

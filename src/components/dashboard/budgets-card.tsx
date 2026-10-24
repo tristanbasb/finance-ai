@@ -63,7 +63,7 @@ export function BudgetsCard({ budgets, monthLabel }: { budgets: BudgetLine[]; mo
             title="Aucun budget défini"
             description="Fixez un plafond mensuel par catégorie pour suivre vos dépenses."
             action={
-              <Link href="/settings" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+              <Link href="/settings#categories" className={buttonClasses({ variant: "secondary", size: "sm" })}>
                 Définir un budget
               </Link>
             }

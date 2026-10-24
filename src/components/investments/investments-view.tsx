@@ -130,7 +130,7 @@ export function InvestmentsView({ groups, accounts }: InvestmentsViewProps) {
           action={
             <div className="flex flex-wrap justify-center gap-2">
               {accounts.length === 0 && (
-                <Link href="/settings" className={buttonClasses({ variant: "secondary" })}>
+                <Link href="/settings#comptes" className={buttonClasses({ variant: "secondary" })}>
                   Ouvrir les réglages
                 </Link>
               )}
