@@ -16,6 +16,7 @@ import {
   type CsvMapping,
 } from "@/lib/csv";
 import { formatDateShort } from "@/lib/format";
+import { importInBatches } from "@/lib/import-batches";
 import type { AccountOption, CategoryOption } from "./transaction-dialog";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -74,6 +75,8 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Lignes déjà enregistrées par un import interrompu : une reprise n'envoie que le reste.
+  const [importedCount, setImportedCount] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -109,6 +112,8 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
   );
   const valid = result?.valid ?? [];
   const busy = aiBusy || importing;
+  // Après un import partiel, le contenu est figé : seule la reprise ou un nouveau fichier est possible.
+  const locked = busy || importedCount > 0;
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -201,32 +206,46 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
       ...(cats[index] ? { categoryId: cats[index] } : {}),
     }));
     setImporting(true);
-    let done = 0;
     try {
-      for (let i = 0; i < rows.length; i += IMPORT_BATCH) {
-        const chunk = rows.slice(i, i + IMPORT_BATCH);
-        const res = await fetch("/api/transactions/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountId: Number(accountId), rows: chunk }),
-        });
-        if (!res.ok) throw new Error(await errorMessage(res));
-        done += chunk.length;
+      const { imported, error } = await importInBatches(
+        rows,
+        IMPORT_BATCH,
+        async (chunk) => {
+          const res = await fetch("/api/transactions/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accountId: Number(accountId), rows: chunk }),
+          });
+          if (!res.ok) throw new Error(await errorMessage(res));
+        },
+        importedCount,
+      );
+      setImportedCount(imported);
+      if (error === undefined) {
+        toast.success(`${imported} ${imported > 1 ? "transactions importées" : "transaction importée"}`);
+        onClose();
+        router.refresh();
+        return;
       }
-      toast.success(`${done} ${done > 1 ? "transactions importées" : "transaction importée"}`);
-      onClose();
-      router.refresh();
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "Le serveur est injoignable.";
-      toast.error(done > 0 ? `Import interrompu après ${done} transactions` : "Import impossible", {
+      const reason = error instanceof Error ? error.message : "Le serveur est injoignable.";
+      toast.error(imported > 0 ? `Import interrompu après ${imported} transactions` : "Import impossible", {
         description:
-          done > 0 ? `${reason} Ces ${done} transactions sont déjà enregistrées : ne réimportez pas tout le fichier.` : reason,
+          imported > 0
+            ? `${reason} Ces ${imported} transactions sont enregistrées : utilisez « Reprendre l'import » pour envoyer le reste.`
+            : reason,
       });
-      if (done > 0) router.refresh();
+      if (imported > 0) router.refresh();
     } finally {
       setImporting(false);
     }
   }
+
+  function restart() {
+    setParsed(null);
+    setImportedCount(0);
+  }
+
+  const remaining = valid.length - importedCount;
 
   const columnOptions = (parsed?.headers ?? []).map((h, i) => ({
     value: i,
@@ -235,8 +254,8 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
 
   const footer = parsed ? (
     <>
-      <Button variant="secondary" onClick={() => setParsed(null)} disabled={busy}>
-        Changer de fichier
+      <Button variant="secondary" onClick={restart} disabled={busy}>
+        {importedCount > 0 ? "Abandonner et changer de fichier" : "Changer de fichier"}
       </Button>
       <Button
         onClick={runImport}
@@ -245,7 +264,9 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
       >
         {valid.length === 0
           ? "Importer"
-          : `Importer ${valid.length} ${valid.length > 1 ? "transactions" : "transaction"}`}
+          : importedCount > 0
+            ? `Reprendre l'import (${remaining} ${remaining > 1 ? "restantes" : "restante"})`
+            : `Importer ${valid.length} ${valid.length > 1 ? "transactions" : "transaction"}`}
       </Button>
     </>
   ) : (
@@ -292,6 +313,18 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
         </div>
       ) : (
         <div className="space-y-6">
+          {importedCount > 0 && (
+            <p
+              role="status"
+              className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2.5 text-[13px] text-fg"
+            >
+              <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+              <span>
+                <strong className="font-semibold">{importedCount}</strong> sur {valid.length} transactions déjà
+                importées. Reprenez l&apos;import pour envoyer les {remaining} restantes, sans doublon.
+              </span>
+            </p>
+          )}
           <section aria-labelledby="import-cols" className="space-y-3">
             <h3 id="import-cols" className="text-[13px] font-semibold text-fg">
               1. Colonnes
@@ -303,7 +336,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                 onChange={(e) => updateCols({ date: e.target.value })}
                 options={columnOptions}
                 placeholder="Choisir une colonne"
-                disabled={busy}
+                disabled={locked}
               />
               <Select
                 label="Libellé"
@@ -311,7 +344,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                 onChange={(e) => updateCols({ label: e.target.value })}
                 options={columnOptions}
                 placeholder="Choisir une colonne"
-                disabled={busy}
+                disabled={locked}
               />
               <Select
                 label="Format des montants"
@@ -324,7 +357,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                   { value: "single", label: "Une colonne Montant (signé)" },
                   { value: "split", label: "Colonnes Débit et Crédit" },
                 ]}
-                disabled={busy}
+                disabled={locked}
                 wrapperClassName={mode === "single" ? undefined : "sm:col-span-2"}
               />
               {mode === "single" ? (
@@ -334,7 +367,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                   onChange={(e) => updateCols({ amount: e.target.value })}
                   options={columnOptions}
                   placeholder="Choisir une colonne"
-                  disabled={busy}
+                  disabled={locked}
                 />
               ) : (
                 <>
@@ -344,7 +377,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                     onChange={(e) => updateCols({ debit: e.target.value })}
                     options={columnOptions}
                     placeholder="Aucune"
-                    disabled={busy}
+                    disabled={locked}
                   />
                   <Select
                     label="Crédit (entrées)"
@@ -352,7 +385,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                     onChange={(e) => updateCols({ credit: e.target.value })}
                     options={columnOptions}
                     placeholder="Aucune"
-                    disabled={busy}
+                    disabled={locked}
                   />
                 </>
               )}
@@ -413,7 +446,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                             aria-label={`Catégorie de « ${t.label} »`}
                             className={rowSelectClasses}
                             value={cats[index] ? String(cats[index]) : ""}
-                            disabled={busy}
+                            disabled={locked}
                             onChange={(e) =>
                               setCats((c) => ({
                                 ...c,
@@ -454,14 +487,14 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
               onChange={(e) => setAccountId(e.target.value)}
               options={activeAccounts.map((a) => ({ value: a.id, label: a.name }))}
               placeholder={activeAccounts.length === 0 ? "Aucun compte disponible" : undefined}
-              disabled={busy}
+              disabled={locked}
             />
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 variant="secondary"
                 onClick={categorize}
                 loading={aiBusy}
-                disabled={aiEnabled !== true || valid.length === 0 || importing}
+                disabled={aiEnabled !== true || valid.length === 0 || locked}
                 title={aiEnabled === false ? "IA non configurée" : undefined}
               >
                 <Sparkles aria-hidden />
