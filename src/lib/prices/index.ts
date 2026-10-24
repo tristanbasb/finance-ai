@@ -97,20 +97,26 @@ export async function refreshPrices(
     [stockSymbols, deps.stock],
     [cryptoSymbols, deps.crypto],
   ];
-  for (const [set, fetcher] of groups) {
-    const symbols = [...set].filter(isStale);
-    if (symbols.length === 0) continue;
-    let result: Awaited<ReturnType<PriceFetcher>>;
-    try {
-      result = await fetcher(symbols);
-    } catch (err) {
-      console.error("[prices] récupération des cours échouée :", err);
-      for (const s of symbols) failed.add(s);
-      continue;
-    }
+  // Actions et cryptos interrogées en parallèle ; les enregistrements restent séquentiels.
+  const fetched = await Promise.all(
+    groups.map(async ([set, fetcher]) => {
+      const symbols = [...set].filter(isStale);
+      if (symbols.length === 0) return null;
+      try {
+        return { symbols, result: await fetcher(symbols) };
+      } catch (err) {
+        console.error("[prices] récupération des cours échouée :", err);
+        for (const s of symbols) failed.add(s);
+        return null;
+      }
+    }),
+  );
+  for (const group of fetched) {
+    if (!group) continue;
+    const { symbols, result } = group;
     for (const symbol of symbols) {
       const quote = result.get(symbol);
-      if (!quote || !Number.isFinite(quote.price) || quote.price < 0) {
+      if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) {
         failed.add(symbol);
         continue;
       }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
@@ -215,5 +215,94 @@ describe("snapshots", () => {
       "2026-10-22",
       "2026-10-24",
     ]);
+  });
+});
+
+describe("refreshPrices — robustesse", () => {
+  it("un cours nul est refusé (échec, ancien cours conservé)", async () => {
+    const db = freshDb();
+    addHolding(db, "AAPL", "stock");
+    db.insert(prices).values({ symbol: "AAPL", price: 4_200, currency: "EUR", fetchedAt: 1 }).run();
+    const stock = fetcher({ AAPL: { price: 0, currency: "EUR" } });
+    const res = await refreshPrices(db, { stock, crypto: noFetch, fx: eur }, NOW);
+    expect(res).toEqual({ updated: 0, failed: ["AAPL"] });
+    expect(db.select().from(prices).get()!.price).toBe(4_200);
+  });
+
+  it("interroge actions et cryptos en parallèle", async () => {
+    const db = freshDb();
+    addHolding(db, "AAPL", "stock");
+    addHolding(db, "BTC", "crypto");
+    let cryptoStarted!: () => void;
+    const started = new Promise<void>((resolve) => (cryptoStarted = resolve));
+    // Le fetcher actions attend que le fetcher crypto ait démarré : en séquentiel, blocage.
+    const stock: PriceFetcher = async () => {
+      await started;
+      return new Map([["AAPL", { price: 10, currency: "EUR" }]]);
+    };
+    const crypto: PriceFetcher = async () => {
+      cryptoStarted();
+      return new Map([["BTC", { price: 20, currency: "EUR" }]]);
+    };
+    const res = await refreshPrices(db, { stock, crypto, fx: eur }, NOW);
+    expect(res).toEqual({ updated: 2, failed: [] });
+  });
+});
+
+describe("coingeckoFetcher", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("un échec de /search pour un symbole n'empêche pas de coter les autres", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+      if (url.pathname.endsWith("/search")) {
+        const q = url.searchParams.get("query");
+        if (q === "FAILX") return new Response("{}", { status: 429 });
+        if (q === "OKA") return json({ coins: [{ id: "ok-a", symbol: "oka" }] });
+        if (q === "OKB") return json({ coins: [{ id: "ok-b", symbol: "OKB" }] });
+        return json({ coins: [] });
+      }
+      if (url.pathname.endsWith("/simple/price")) {
+        expect(url.searchParams.get("ids")).toBe("ok-a,ok-b");
+        return json({ "ok-a": { eur: 1.5 }, "ok-b": { eur: 2 } });
+      }
+      return new Response("", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { coingeckoFetcher } = await import("@/lib/prices/coingecko");
+    const out = await coingeckoFetcher(["OKA", "FAILX", "OKB"]);
+    expect(Object.fromEntries(out)).toEqual({
+      OKA: { price: 1.5, currency: "EUR" },
+      OKB: { price: 2, currency: "EUR" },
+    });
+  });
+});
+
+describe("withTimeout", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rejette après le délai si la promesse ne se résout pas", async () => {
+    vi.useFakeTimers();
+    const { withTimeout } = await import("@/lib/prices/timeout");
+    const pending = withTimeout(() => new Promise<never>(() => {}), 8000, "Yahoo");
+    const assertion = expect(pending).rejects.toThrow(/Yahoo.*8 s/);
+    await vi.advanceTimersByTimeAsync(8000);
+    await assertion;
+  });
+
+  it("transmet un signal d'annulation et renvoie le résultat à temps", async () => {
+    const { withTimeout } = await import("@/lib/prices/timeout");
+    let received: AbortSignal | undefined;
+    const value = await withTimeout(async (signal) => {
+      received = signal;
+      return 42;
+    }, 8000, "Yahoo");
+    expect(value).toBe(42);
+    expect(received).toBeInstanceOf(AbortSignal);
   });
 });

@@ -36,7 +36,14 @@ export const coingeckoFetcher: PriceFetcher = async (symbols) => {
   const out = new Map<string, { price: number; currency: string }>();
   const idToSymbols = new Map<string, string[]>();
   for (const symbol of symbols) {
-    const id = await resolveId(symbol);
+    let id: string | null;
+    try {
+      id = await resolveId(symbol);
+    } catch (err) {
+      // Échec isolé (429, réseau) : seul ce symbole est en échec, les autres restent cotés.
+      console.error(`[prices] identifiant CoinGecko introuvable pour ${symbol} :`, err);
+      continue;
+    }
     if (!id) continue;
     idToSymbols.set(id, [...(idToSymbols.get(id) ?? []), symbol]);
   }

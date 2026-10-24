@@ -1,8 +1,12 @@
 import YahooFinance from "yahoo-finance2";
 import type { PriceFetcher } from "./index";
+import { TimeoutError, withTimeout } from "./timeout";
 
 // Notices (enquête, etc.) désactivées pour garder des journaux serveur propres.
 const yahoo = new YahooFinance({ suppressNotices: ["yahooSurvey", "ripHistorical"] });
+
+/** Délai maximal par appel à Yahoo Finance. */
+const TIMEOUT_MS = 8000;
 
 type Quote = { symbol: string; regularMarketPrice?: number; currency?: string };
 
@@ -13,7 +17,12 @@ const FIELDS: ("symbol" | "regularMarketPrice" | "currency")[] = [
 ];
 
 async function quoteMany(symbols: string[]): Promise<Quote[]> {
-  return (await yahoo.quote(symbols, { fields: FIELDS })) as Quote[];
+  return withTimeout(
+    async (signal) =>
+      (await yahoo.quote(symbols, { fields: FIELDS }, { fetchOptions: { signal } })) as Quote[],
+    TIMEOUT_MS,
+    "Yahoo Finance",
+  );
 }
 
 /** Cours actions/ETF via Yahoo Finance ; repli symbole par symbole si le lot échoue. */
@@ -29,7 +38,8 @@ export const yahooFetcher: PriceFetcher = async (symbols) => {
   try {
     collect(await quoteMany(symbols));
   } catch (err) {
-    if (symbols.length === 1) throw err;
+    // Service muet : inutile de retenter symbole par symbole (8 s chacun).
+    if (symbols.length === 1 || err instanceof TimeoutError) throw err;
     for (const symbol of symbols) {
       try {
         collect(await quoteMany([symbol]));
@@ -44,7 +54,11 @@ export const yahooFetcher: PriceFetcher = async (symbols) => {
 /** Unités de `cur` pour 1 EUR, via la paire EUR{cur}=X. */
 export async function yahooFx(cur: string): Promise<number> {
   if (cur === "EUR") return 1;
-  const q = await yahoo.quote(`EUR${cur}=X`, { fields: ["regularMarketPrice"] });
+  const q = await withTimeout(
+    (signal) => yahoo.quote(`EUR${cur}=X`, { fields: ["regularMarketPrice"] }, { fetchOptions: { signal } }),
+    TIMEOUT_MS,
+    "Yahoo Finance (change)",
+  );
   const rate = q?.regularMarketPrice;
   if (typeof rate !== "number" || rate <= 0) throw new Error(`Taux EUR/${cur} indisponible`);
   return rate;
