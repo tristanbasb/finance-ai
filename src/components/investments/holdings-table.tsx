@@ -1,7 +1,9 @@
 "use client";
 
+import { Pencil } from "lucide-react";
 import { Amount } from "@/components/amount";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatUnitPrice } from "@/lib/money";
 import { Pnl, PriceSourceBadge } from "./pnl";
@@ -48,8 +50,11 @@ export function HoldingsTable({ groups, onEdit }: HoldingsTableProps) {
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">
                   Valeur
                 </th>
-                <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                <th scope="col" className="px-3 py-2.5 text-right font-medium">
                   Plus ou moins-value
+                </th>
+                <th scope="col" className="w-12 py-2.5 pr-4">
+                  <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
@@ -57,21 +62,11 @@ export function HoldingsTable({ groups, onEdit }: HoldingsTableProps) {
               {g.holdings.map((h) => (
                 <tr key={h.id} onClick={() => onEdit(h)} className="cursor-pointer transition-colors hover:bg-surface-2">
                   <td className="max-w-0 px-5 py-3">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(h);
-                      }}
-                      aria-label={`Modifier ${h.name}`}
-                      className="block max-w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    >
-                      <span className="block truncate font-medium text-fg">{h.name}</span>
-                      <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
-                        <span className="truncate font-mono">{h.symbol}</span>
-                        <Badge>{ASSET_TYPE_LABELS[h.assetType]}</Badge>
-                      </span>
-                    </button>
+                    <span className="block truncate font-medium text-fg">{h.name}</span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
+                      <span className="truncate font-mono">{h.symbol}</span>
+                      <Badge>{ASSET_TYPE_LABELS[h.assetType]}</Badge>
+                    </span>
                   </td>
                   <td className="num px-3 py-3 text-right text-fg">{formatQuantity(h.quantity)}</td>
                   <td className="px-3 py-3 text-right">
@@ -83,8 +78,11 @@ export function HoldingsTable({ groups, onEdit }: HoldingsTableProps) {
                   <td className="num px-3 py-3 text-right font-medium text-fg">
                     <Amount cents={h.value} />
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-3 py-3 text-right">
                     <Pnl pnl={h.pnl} pct={h.pnlPct} stacked />
+                  </td>
+                  <td className="w-12 py-3 pr-4 text-right">
+                    <EditButton name={h.name} onEdit={() => onEdit(h)} />
                   </td>
                 </tr>
               ))}
@@ -93,36 +91,54 @@ export function HoldingsTable({ groups, onEdit }: HoldingsTableProps) {
 
           <ul className="divide-y divide-border border-t border-border md:hidden">
             {g.holdings.map((h) => (
-              <li key={h.id}>
-                <button
-                  type="button"
-                  onClick={() => onEdit(h)}
-                  aria-label={`Modifier ${h.name}`}
-                  className="block w-full space-y-2 px-4 py-3.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                >
-                  <span className="flex items-start justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-fg">{h.name}</span>
-                      <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
-                        <span className="truncate font-mono">{h.symbol}</span>
-                        <Badge>{ASSET_TYPE_LABELS[h.assetType]}</Badge>
-                      </span>
-                    </span>
-                    <Amount cents={h.value} className="shrink-0 text-sm font-semibold text-fg" />
-                  </span>
-                  <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[12px]">
-                    <span className="num flex flex-wrap items-center gap-1.5 text-muted">
-                      {formatQuantity(h.quantity)} × {formatUnitPrice(h.price)}
-                      <PriceSourceBadge source={h.source} />
-                    </span>
-                    <Pnl pnl={h.pnl} pct={h.pnlPct} className="text-[12px]" />
-                  </span>
-                </button>
+              <li
+                key={h.id}
+                className="relative space-y-2 px-4 py-3.5 transition-colors hover:bg-surface-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-fg">{h.name}</p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
+                      <span className="truncate font-mono">{h.symbol}</span>
+                      <Badge>{ASSET_TYPE_LABELS[h.assetType]}</Badge>
+                    </p>
+                  </div>
+                  <Amount cents={h.value} className="shrink-0 pt-0.5 text-sm font-semibold text-fg" />
+                  <EditButton name={h.name} onEdit={() => onEdit(h)} stretched />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[12px]">
+                  <p className="num flex flex-wrap items-center gap-1.5 text-muted">
+                    {formatQuantity(h.quantity)} × {formatUnitPrice(h.price)}
+                    <PriceSourceBadge source={h.source} />
+                  </p>
+                  <Pnl pnl={h.pnl} pct={h.pnlPct} className="text-[12px]" />
+                </div>
               </li>
             ))}
           </ul>
         </Card>
       ))}
     </div>
+  );
+}
+
+/**
+ * Bouton « Modifier » dédié : le nom accessible ne remplace aucune donnée affichée.
+ * `stretched` étend sa zone de toucher à toute la carte parent (qui doit être `relative`).
+ */
+function EditButton({ name, onEdit, stretched = false }: { name: string; onEdit: () => void; stretched?: boolean }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={stretched ? "-mr-2 -mt-1.5 size-8 after:absolute after:inset-0" : "size-8"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onEdit();
+      }}
+      aria-label={`Modifier ${name}`}
+    >
+      <Pencil aria-hidden />
+    </Button>
   );
 }
