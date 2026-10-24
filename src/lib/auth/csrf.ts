@@ -7,9 +7,8 @@ export type CsrfInput = {
   host: string | null;
   origin: string | null;
   secFetchSite: string | null;
-  /** En-tête X-Forwarded-Host (pris en compte seulement si `trustProxy`). */
+  /** En-tête X-Forwarded-Host (ajouté par un reverse proxy). */
   forwardedHost: string | null;
-  trustProxy: boolean;
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -24,17 +23,20 @@ function normalizeHost(host: string, protocol: string): string | null {
 }
 
 /**
- * Vrai si la requête doit être refusée : méthode modifiante vers /api, avec un `Sec-Fetch-Site`
- * autre que same-origin/none, ou un `Origin` dont l'hôte diffère de celui de la requête
- * (`Host`, ou `X-Forwarded-Host` derrière un proxy de confiance). Sans ces en-têtes
- * (curl, scripts), la requête passe : seuls les navigateurs les envoient.
+ * Vrai si la requête doit être refusée (méthode modifiante vers /api) :
+ * - `Sec-Fetch-Site` présent : seuls `same-origin` et `none` passent (en-tête qu'un site tiers
+ *   ne peut pas forger ; aucune comparaison Origin/Host, qu'un reverse proxy peut réécrire) ;
+ * - sinon, `Origin` présent : son hôte doit égaler `X-Forwarded-Host` (1re valeur) s'il existe,
+ *   sinon `Host` (une requête cross-site ne peut pas ajouter cet en-tête sans préflight CORS,
+ *   refusé) ;
+ * - ni l'un ni l'autre (curl, scripts) : la requête passe.
  */
 export function isCrossSiteRequest(input: CsrfInput): boolean {
   if (SAFE_METHODS.has(input.method.toUpperCase())) return false;
   if (input.pathname !== "/api" && !input.pathname.startsWith("/api/")) return false;
 
   const site = input.secFetchSite?.trim().toLowerCase();
-  if (site && site !== "same-origin" && site !== "none") return true;
+  if (site) return site !== "same-origin" && site !== "none";
 
   if (input.origin === null) return false;
   let origin: URL;
@@ -43,10 +45,7 @@ export function isCrossSiteRequest(input: CsrfInput): boolean {
   } catch {
     return true; // « null » (contexte opaque) ou valeur illisible
   }
-  const candidates = [input.host];
-  if (input.trustProxy && input.forwardedHost) {
-    // Valeur la plus à droite : celle ajoutée par notre proxy (comme pour X-Forwarded-For).
-    candidates.push(input.forwardedHost.split(",").at(-1) ?? null);
-  }
-  return !candidates.some((h) => h && normalizeHost(h, origin.protocol) === origin.host);
+  const forwarded = input.forwardedHost?.split(",")[0]?.trim();
+  const expected = forwarded || input.host;
+  return !expected || normalizeHost(expected, origin.protocol) !== origin.host;
 }

@@ -16,7 +16,6 @@ export async function proxy(request: NextRequest) {
       origin: request.headers.get("origin"),
       secFetchSite: request.headers.get("sec-fetch-site"),
       forwardedHost: request.headers.get("x-forwarded-host"),
-      trustProxy: process.env.TRUST_PROXY === "true",
     })
   ) {
     return NextResponse.json({ error: "Requête refusée" }, { status: 403 });

@@ -8,7 +8,6 @@ const base: CsrfInput = {
   origin: null,
   secFetchSite: null,
   forwardedHost: null,
-  trustProxy: false,
 };
 const check = (patch: Partial<CsrfInput>) => isCrossSiteRequest({ ...base, ...patch });
 
@@ -57,11 +56,22 @@ describe("isCrossSiteRequest", () => {
     expect(check({ host: "finance.example.com:443", origin: "https://finance.example.com" })).toBe(false);
   });
 
-  it("X-Forwarded-Host n'est pris en compte qu'avec TRUST_PROXY", () => {
-    const behindProxy = { host: "127.0.0.1:3000", forwardedHost: "finance.example.com", origin: "https://finance.example.com" };
-    expect(check(behindProxy)).toBe(true);
-    expect(check({ ...behindProxy, trustProxy: true })).toBe(false);
-    expect(check({ ...behindProxy, trustProxy: true, origin: "https://evil.example" })).toBe(true);
+  it("Sec-Fetch-Site same-origin suffit, même si Origin diffère de Host (proxy qui réécrit Host)", () => {
+    expect(check({ secFetchSite: "same-origin", host: "127.0.0.1:3000", origin: "https://finance.example.com" })).toBe(false);
+  });
+
+  it("Sec-Fetch-Site cross-site est refusé même avec un Origin identique à l'hôte", () => {
+    expect(check({ secFetchSite: "cross-site", origin: "http://localhost:3000" })).toBe(true);
+  });
+
+  it("sans Sec-Fetch-Site : Origin comparé à X-Forwarded-Host (1re valeur) s'il existe, sans TRUST_PROXY", () => {
+    const behindProxy = { host: "127.0.0.1:3000", forwardedHost: "finance.example.com, 10.0.0.1", origin: "https://finance.example.com" };
+    expect(check(behindProxy)).toBe(false);
+    expect(check({ ...behindProxy, origin: "https://evil.example" })).toBe(true);
+  });
+
+  it("sans Sec-Fetch-Site : Origin différent de Host refusé", () => {
+    expect(check({ host: "127.0.0.1:3000", origin: "https://finance.example.com" })).toBe(true);
   });
 });
 

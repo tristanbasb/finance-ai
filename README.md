@@ -156,11 +156,9 @@ et `docker compose up -d`.
 > contourner la limite par IP. Avec `false` (défaut), la limite (5 échecs / 15 min) est
 > commune à tous les clients.
 
-> **Le proxy doit transmettre l'en-tête `Host` d'origine** (Caddy le fait par défaut ; avec
-> Nginx : `proxy_set_header Host $host;`). Les requêtes qui modifient des données sont refusées
-> (403 « Requête refusée ») quand leur `Origin` ne correspond pas à l'hôte demandé : c'est la
-> protection contre les requêtes envoyées depuis un autre site. Si le proxy réécrit `Host`,
-> `X-Forwarded-Host` est utilisé à la place avec `TRUST_PROXY=true`.
+> Les requêtes qui modifient des données et proviennent d'un autre site sont refusées
+> (403 « Requête refusée »), d'après l'en-tête `Sec-Fetch-Site` envoyé par les navigateurs.
+> Aucun réglage particulier du reverse proxy n'est nécessaire.
 
 > Docker publie ses ports en contournant certains pare-feux (ufw). `APP_BIND=127.0.0.1` est
 > le moyen fiable de n'exposer l'application que via le reverse proxy.
