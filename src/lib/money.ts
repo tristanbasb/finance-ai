@@ -16,8 +16,11 @@ export function fromCents(cents: number): number {
   return cents / 100;
 }
 
+type DecimalParts = { negative: boolean; intPart: string; fracPart: string };
+
 /**
- * Convertit un texte de montant en centimes, ou null s'il est illisible.
+ * Découpe un nombre saisi à la française ou à l'anglaise en signe, partie entière et décimales
+ * (chaînes de chiffres), ou null s'il est illisible.
  *
  * Séparateur décimal : si « , » et « . » apparaissent, le DERNIER est le décimal ;
  * une « , » seule est décimale (FR) ; un « . » seul est décimal sauf s'il y a
@@ -25,7 +28,7 @@ export function fromCents(cents: number): number {
  * Espaces, espaces insécables, « € » et « EUR » sont ignorés ; signe « + »/« - »
  * en tête ou « - »/« + » en fin.
  */
-export function parseAmount(raw: string): number | null {
+function parseDecimalParts(raw: string): DecimalParts | null {
   let s = raw.replace(/[\s  ]/g, "").replace(/€|EUR/gi, "");
   let negative = false;
   const lead = /^[+-]/.exec(s);
@@ -75,12 +78,50 @@ export function parseAmount(raw: string): number | null {
     intPart = groups.join("");
   }
   if (!/^\d*$/.test(intPart) || !/^\d*$/.test(fracPart)) return null;
+  return { negative, intPart, fracPart };
+}
 
+/** Convertit un texte de montant en centimes entiers (arrondi au centime), ou null s'il est illisible. */
+export function parseAmount(raw: string): number | null {
+  const parts = parseDecimalParts(raw);
+  if (!parts) return null;
+  const { negative, intPart, fracPart } = parts;
   // Arrondi demi-supérieur sur la chaîne décimale (évite les erreurs de flottants).
   const frac = fracPart.padEnd(3, "0");
   let cents = Number(intPart || "0") * 100 + Number(frac.slice(0, 2));
   if (frac.charCodeAt(2) >= 53 /* '5' */) cents += 1;
   return negative ? -cents : cents;
+}
+
+/**
+ * Convertit un prix unitaire saisi en euros en centimes RÉELS, sans arrondir au centime
+ * (crypto : « 0,00001 » → 0.001). Null si illisible ou négatif.
+ */
+export function parseUnitPrice(raw: string): number | null {
+  const parts = parseDecimalParts(raw);
+  if (!parts || (parts.negative && /[1-9]/.test(parts.intPart + parts.fracPart))) return null;
+  const frac = parts.fracPart.padEnd(2, "0");
+  // Décalage de deux rangs fait sur la chaîne : « 0,00001 » → « 000.001 » sans erreur de flottant.
+  return Number(`${parts.intPart || "0"}${frac.slice(0, 2)}.${frac.slice(2) || "0"}`);
+}
+
+/** Convertit une quantité saisie (« 0,0523 ») en nombre, ou null si illisible ou négative. */
+export function parseQuantity(raw: string): number | null {
+  const parts = parseDecimalParts(raw);
+  if (!parts || (parts.negative && /[1-9]/.test(parts.intPart + parts.fracPart))) return null;
+  return Number(`${parts.intPart || "0"}.${parts.fracPart || "0"}`);
+}
+
+const unitPriceFormatter = new Intl.NumberFormat("fr-FR", {
+  style: "currency",
+  currency: "EUR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 6,
+});
+
+/** Prix unitaire en centimes réels : jusqu'à 6 décimales sous 1 €, 2 décimales sinon. */
+export function formatUnitPrice(cents: number): string {
+  return Math.abs(cents) < 100 ? unitPriceFormatter.format(cents / 100) : formatEUR(cents);
 }
 
 function isoDate(year: number, month: number, day: number): string | null {

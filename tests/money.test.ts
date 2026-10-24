@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatEUR, fromCents, parseAmount, parseDate, toCents } from "@/lib/money";
+import {
+  formatEUR,
+  formatUnitPrice,
+  fromCents,
+  parseAmount,
+  parseDate,
+  parseQuantity,
+  parseUnitPrice,
+  toCents,
+} from "@/lib/money";
 
 describe("parseAmount", () => {
   it("parse le format français avec espaces et symbole euro", () => {
@@ -78,5 +87,60 @@ describe("toCents / fromCents", () => {
     expect(toCents(12.34)).toBe(1234);
     expect(toCents(0.1 + 0.2)).toBe(30);
     expect(fromCents(1234)).toBe(12.34);
+  });
+});
+
+describe("parseUnitPrice", () => {
+  it("renvoie des centimes réels sans arrondir au centime", () => {
+    expect(parseUnitPrice("0,00001")).toBe(0.001);
+    expect(parseUnitPrice("1 234,5678")).toBe(123456.78);
+    expect(parseUnitPrice("0,0000123")).toBe(0.00123);
+  });
+  it("garde la valeur exacte pour les prix à 2 décimales", () => {
+    expect(parseUnitPrice("12,50")).toBe(1250);
+    expect(parseUnitPrice("0,07")).toBe(7);
+    expect(parseUnitPrice("0")).toBe(0);
+  });
+  it("applique les mêmes règles de séparateurs que parseAmount", () => {
+    expect(parseUnitPrice("1.234,5")).toBe(123450);
+    expect(parseUnitPrice("1,234.56")).toBe(123456);
+    expect(parseUnitPrice("42 €")).toBe(4200);
+    expect(parseUnitPrice("65 000,5")).toBe(6500050);
+  });
+  it("refuse le texte illisible, vide ou négatif", () => {
+    expect(parseUnitPrice("abc")).toBeNull();
+    expect(parseUnitPrice("")).toBeNull();
+    expect(parseUnitPrice("-3")).toBeNull();
+    expect(parseUnitPrice("1,2,3,x")).toBeNull();
+  });
+});
+
+describe("parseQuantity", () => {
+  it("parse les décimales françaises", () => {
+    expect(parseQuantity("0,0523")).toBe(0.0523);
+    expect(parseQuantity("12")).toBe(12);
+    expect(parseQuantity("1 234,5")).toBe(1234.5);
+    expect(parseQuantity("0.5")).toBe(0.5);
+  });
+  it("garde jusqu'à 8 décimales", () => {
+    expect(parseQuantity("0,00000001")).toBe(1e-8);
+  });
+  it("refuse le texte illisible, vide ou négatif", () => {
+    expect(parseQuantity("")).toBeNull();
+    expect(parseQuantity("deux")).toBeNull();
+    expect(parseQuantity("-1")).toBeNull();
+  });
+});
+
+describe("formatUnitPrice", () => {
+  it("affiche 2 décimales à partir de 1 €", () => {
+    expect(formatUnitPrice(12345)).toBe(formatEUR(12345));
+    expect(formatUnitPrice(100)).toBe(formatEUR(100));
+  });
+  it("affiche jusqu'à 6 décimales sous 1 €", () => {
+    expect(formatUnitPrice(0.001)).toBe("0,00001 €");
+    expect(formatUnitPrice(45.5)).toBe("0,455 €");
+    expect(formatUnitPrice(7)).toBe("0,07 €");
+    expect(formatUnitPrice(0)).toBe("0,00 €");
   });
 });
