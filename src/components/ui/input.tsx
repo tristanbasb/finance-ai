@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { useId, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { controlClasses, describedBy, Field } from "./field";
 
-export type InputProps = InputHTMLAttributes<HTMLInputElement> & {
+export type InputProps = ComponentProps<"input"> & {
   label?: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;

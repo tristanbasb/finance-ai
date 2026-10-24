@@ -125,6 +125,15 @@ const KEYWORDS: Record<keyof CsvMapping, string[]> = {
   credit: ["credit"],
 };
 
+/**
+ * Décode les octets d'un fichier CSV : UTF-8 d'abord ; si le texte contient des caractères
+ * de remplacement (U+FFFD), relit en windows-1252 (nombreuses banques françaises exportent en Latin-1).
+ */
+export function decodeCsvBytes(bytes: ArrayBuffer | Uint8Array): string {
+  const utf8 = new TextDecoder("utf-8").decode(bytes);
+  return utf8.includes(String.fromCharCode(0xfffd)) ? new TextDecoder("windows-1252").decode(bytes) : utf8;
+}
+
 /** Devine le mappage des colonnes à partir des en-têtes (1re colonne correspondante gagne). */
 export function guessMapping(headers: string[]): Partial<CsvMapping> {
   const normalized = headers.map(normalize);

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { guessMapping, mapRows, parseCsv, type CsvMapping } from "@/lib/csv";
+import { decodeCsvBytes, guessMapping, mapRows, parseCsv, type CsvMapping } from "@/lib/csv";
 
 describe("parseCsv", () => {
   it("retire le BOM et détecte le délimiteur ;", () => {
@@ -179,5 +179,18 @@ describe("relevé bancaire d'exemple (tests/fixtures/releve.csv)", () => {
       { date: "2026-10-10", label: "REMBOURSEMENT AMI", amount: 2500 },
       { date: "2026-10-12", label: "ABONNEMENT NETFLIX", amount: -1349 },
     ]);
+  });
+});
+
+describe("decodeCsvBytes", () => {
+  it("lit de l'UTF-8 tel quel", () => {
+    const bytes = new TextEncoder().encode("Libellé;Crédit\nCafé;1");
+    expect(decodeCsvBytes(bytes)).toBe("Libellé;Crédit\nCafé;1");
+  });
+  it("retombe sur windows-1252 quand l'UTF-8 est invalide (export bancaire Latin-1)", () => {
+    // « Libellé;Crédit » encodé en Latin-1 : é = 0xE9
+    const latin = Uint8Array.from(Buffer.from("Libellé;Crédit", "latin1"));
+    expect(latin).toContain(0xe9);
+    expect(decodeCsvBytes(latin)).toBe("Libellé;Crédit");
   });
 });
