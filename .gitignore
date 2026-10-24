@@ -21,3 +21,6 @@ backups/
 
 # outillage
 .superpowers/
+
+# généré par next dev
+AGENTS.md

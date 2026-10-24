@@ -17,3 +17,19 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntaxe bash
+        run: for f in install.sh update.sh scripts/*.sh; do bash -n "$f"; done
+      - name: ShellCheck
+        run: shellcheck -x install.sh update.sh scripts/*.sh
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construction de l'image (sans publication)
+        run: docker build -t finance-ai:ci .

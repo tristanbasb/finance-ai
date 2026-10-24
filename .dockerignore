@@ -1,0 +1,23 @@
+# Ne pas envoyer au démon Docker : dépendances et builds locaux, données, secrets, outillage.
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+.git
+.github
+data
+backups
+.env
+.env.*
+.superpowers
+tests
+docs
+AGENTS.md
+README.md
+LICENSE
+Dockerfile
+docker-compose.yml
+install.sh
+update.sh
+npm-debug.log*
