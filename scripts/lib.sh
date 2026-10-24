@@ -75,12 +75,12 @@ ask() {
   printf '%s\n' "${answer:-$2}"
 }
 
-# ask_secret "Question" → imprime la saisie masquée (rien n'est affiché à l'écran).
+# ask_secret "Question" → imprime la saisie masquée (rien n'est affiché à l'écran), espaces compris.
 ask_secret() {
   local answer
   ! non_interactive || die "Mode non interactif : impossible de demander « $1 »."
   printf '%s : ' "$1" >&2
-  read -r -s answer <&3 || answer=""
+  IFS= read -r -s answer <&3 || answer=""
   printf '\n' >&2
   printf '%s' "$answer"
 }
@@ -91,6 +91,7 @@ read_new_password() {
   if [ -n "${FINANCE_AI_PASSWORD:-}" ]; then
     pw="$FINANCE_AI_PASSWORD"
     [ "${#pw}" -ge 8 ] || die "FINANCE_AI_PASSWORD doit contenir au moins 8 caractères."
+    [ "${#pw}" -le 1024 ] || die "FINANCE_AI_PASSWORD ne doit pas dépasser 1024 caractères."
     printf '%s' "$pw"
     return 0
   fi
@@ -99,6 +100,10 @@ read_new_password() {
     pw="$(ask_secret "Mot de passe de connexion (8 caractères minimum)")"
     if [ "${#pw}" -lt 8 ]; then
       warn "Trop court : 8 caractères minimum."
+      continue
+    fi
+    if [ "${#pw}" -gt 1024 ]; then
+      warn "Trop long : 1024 caractères maximum."
       continue
     fi
     pw2="$(ask_secret "Confirmez le mot de passe")"

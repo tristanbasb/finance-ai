@@ -181,6 +181,8 @@ create_env() {
   else
     api_key="$(ask_secret "Clé API Claude (optionnelle, Entrée pour ignorer)")"
   fi
+  # Une clé API ne contient jamais d'espace : on retire ceux d'un copier-coller.
+  api_key="$(printf '%s' "$api_key" | tr -d '[:space:]')"
   [ -n "$api_key" ] || info "Pas de clé API : les fonctions IA resteront désactivées (ajoutez-la plus tard dans .env)."
 
   model="${CLAUDE_MODEL:-}"
