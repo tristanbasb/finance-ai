@@ -232,6 +232,26 @@ describe("outils", () => {
     expect(g.goals).toEqual([]);
   });
 
+  it("get_holdings ignore les positions des comptes archivés (comme get_overview)", async () => {
+    const db = freshDb();
+    const acc = db.select().from(accounts).get()!.id;
+    const archived = db
+      .insert(accounts)
+      .values({ name: "Ancien PEA", type: "investment", color: "#888888", archived: true })
+      .returning()
+      .get().id;
+    db.insert(holdings)
+      .values([
+        { accountId: acc, symbol: "CW8", name: "MSCI World", assetType: "etf", quantity: 2, avgPrice: 45_000 },
+        { accountId: archived, symbol: "OLD", name: "Vieille ligne", assetType: "etf", quantity: 1, avgPrice: 10_000 },
+      ])
+      .run();
+    const h = (await runTool(db, "get_holdings", {})) as { total_value: number; total_cost: number; holdings: { symbol: string }[] };
+    expect(h.total_value).toBe(900);
+    expect(h.total_cost).toBe(900);
+    expect(h.holdings.map((x) => x.symbol)).toEqual(["CW8"]);
+  });
+
   it("outil inconnu ou entrée invalide → { error } sans lever", async () => {
     const db = freshDb();
     expect(await runTool(db, "delete_everything", {})).toEqual({ error: expect.any(String) });

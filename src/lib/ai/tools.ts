@@ -272,8 +272,13 @@ function spendingByCategoryTool(db: Db, input: z.infer<typeof period>, today: st
 }
 
 function getHoldingsTool(db: Db) {
-  const accountNames = new Map(listAccountsWithBalances(db).map((a) => [a.id, a.name]));
-  const list = listHoldingsWithValues(db);
+  // Comptes archivés exclus, comme dans get_overview et le tableau de bord.
+  const accountNames = new Map(
+    listAccountsWithBalances(db)
+      .filter((a) => !a.archived)
+      .map((a) => [a.id, a.name]),
+  );
+  const list = listHoldingsWithValues(db).filter((h) => accountNames.has(h.accountId));
   const value = list.reduce((s, h) => s + h.value, 0);
   const cost = list.reduce((s, h) => s + h.cost, 0);
   return {
@@ -286,7 +291,7 @@ function getHoldingsTool(db: Db) {
       symbol: h.symbol,
       name: h.name,
       type: h.assetType,
-      account: accountNames.get(h.accountId) ?? null,
+      account: accountNames.get(h.accountId)!,
       quantity: h.quantity,
       unit_price: unitEur(h.price),
       price_source: h.priceSource,

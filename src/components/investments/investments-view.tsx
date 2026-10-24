@@ -17,7 +17,10 @@ import { Pnl } from "./pnl";
 import { ASSET_TYPE_LABELS, type AssetType, type HoldingGroup, type HoldingRow } from "./types";
 
 export type InvestmentsViewProps = {
+  /** Comptes actifs : seuls comptés dans les totaux et la répartition. */
   groups: HoldingGroup[];
+  /** Comptes archivés ayant encore des positions : affichés en retrait, hors totaux. */
+  archivedGroups?: HoldingGroup[];
   /** Comptes pouvant recevoir une position (investissement, crypto, autre). */
   accounts: HoldingAccountOption[];
 };
@@ -32,7 +35,7 @@ const TYPE_COLORS: Record<AssetType, string> = {
 };
 
 /** Écran Investissements : synthèse, répartition, positions par compte et actualisation des cours. */
-export function InvestmentsView({ groups, accounts }: InvestmentsViewProps) {
+export function InvestmentsView({ groups, archivedGroups = [], accounts }: InvestmentsViewProps) {
   const router = useRouter();
   const [dialog, setDialog] = useState<DialogState>({ nonce: 0, open: false, holding: null });
   const [refreshing, setRefreshing] = useState(false);
@@ -182,6 +185,20 @@ export function InvestmentsView({ groups, accounts }: InvestmentsViewProps) {
 
           <HoldingsTable groups={groups} onEdit={openEdit} />
         </>
+      )}
+
+      {archivedGroups.length > 0 && (
+        <section aria-labelledby="comptes-archives" className="space-y-3">
+          <div className="space-y-0.5">
+            <h2 id="comptes-archives" className="text-[15px] font-semibold tracking-[-0.01em] text-muted">
+              Comptes archivés
+            </h2>
+            <p className="text-[13px] text-subtle">Non comptés dans les totaux ni dans la répartition.</p>
+          </div>
+          <div className="opacity-60">
+            <HoldingsTable groups={archivedGroups} onEdit={openEdit} />
+          </div>
+        </section>
       )}
 
       <HoldingDialog
