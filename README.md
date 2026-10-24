@@ -157,8 +157,11 @@ et `docker compose up -d`.
 > commune à tous les clients.
 
 > Les requêtes qui modifient des données et proviennent d'un autre site sont refusées
-> (403 « Requête refusée »), d'après l'en-tête `Sec-Fetch-Site` envoyé par les navigateurs.
-> Aucun réglage particulier du reverse proxy n'est nécessaire.
+> (403 « Requête refusée »). En HTTPS, aucun réglage particulier du reverse proxy n'est
+> nécessaire (l'application s'appuie sur l'en-tête `Sec-Fetch-Site` des navigateurs). Derrière
+> un reverse proxy en HTTP simple qui réécrit l'en-tête `Host` (comportement par défaut de
+> Nginx), les navigateurs n'envoient pas cet en-tête et l'application compare `Origin` à
+> l'hôte : ajoutez `proxy_set_header Host $host;` (ou transmettez `X-Forwarded-Host`).
 
 > Docker publie ses ports en contournant certains pare-feux (ufw). `APP_BIND=127.0.0.1` est
 > le moyen fiable de n'exposer l'application que via le reverse proxy.
