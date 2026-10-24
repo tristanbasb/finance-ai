@@ -6,12 +6,13 @@ import { RefreshCw, Sparkles } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { INSIGHTS_ERROR_FALLBACK, readInsightsResponse } from "@/lib/insights-response";
 
 type State =
   | { kind: "loading" }
   | { kind: "disabled" }
   | { kind: "ready"; insights: string[]; refreshing: boolean }
-  | { kind: "error" };
+  | { kind: "error"; message: string };
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T | null> {
   try {
@@ -33,12 +34,21 @@ export function AiInsightsCard({ month, monthLabel }: { month: string; monthLabe
   const loadInsights = useCallback(
     async (refresh: boolean, signal?: AbortSignal) => {
       const url = `/api/ai/insights?month=${encodeURIComponent(month)}${refresh ? "&refresh=1" : ""}`;
-      const data = await fetchJson<{ insights?: unknown }>(url, signal);
+      let outcome: ReturnType<typeof readInsightsResponse>;
+      try {
+        const res = await fetch(url, { signal, cache: "no-store" });
+        let body: unknown = null;
+        try {
+          body = await res.json();
+        } catch {
+          /* corps absent ou illisible */
+        }
+        outcome = readInsightsResponse(res.status, body);
+      } catch {
+        outcome = { kind: "error", message: INSIGHTS_ERROR_FALLBACK };
+      }
       if (signal?.aborted) return;
-      const insights = Array.isArray(data?.insights)
-        ? data.insights.filter((i): i is string => typeof i === "string" && i.trim() !== "")
-        : null;
-      setState(insights ? { kind: "ready", insights, refreshing: false } : { kind: "error" });
+      setState(outcome.kind === "ready" ? { ...outcome, refreshing: false } : outcome);
     },
     [month],
   );
@@ -111,9 +121,7 @@ export function AiInsightsCard({ month, monthLabel }: { month: string; monthLabe
         )}
 
         {state.kind === "error" && (
-          <p className="text-[13px] leading-relaxed text-muted">
-            L&apos;analyse n&apos;a pas pu être générée. Réessayez avec le bouton d&apos;actualisation.
-          </p>
+          <p className="text-[13px] leading-relaxed text-muted">{state.message}</p>
         )}
 
         {state.kind === "ready" &&
