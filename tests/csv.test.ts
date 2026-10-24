@@ -186,6 +186,34 @@ describe("choix de la ligne d'en-tête (préambule bancaire)", () => {
     const r = parseCsv('Date;Libellé;Montant\r\n\r\n24/10/2026;"deux\nlignes";1\r\n25/10/2026;X;2\r\n');
     expect(r.lines).toEqual([3, 5]);
   });
+  it("des virgules dans un libellé ne font pas choisir « , » comme délimiteur", () => {
+    const r = parseCsv("Date;Libellé;Montant\n02/01/2026;PRLV FREE MOBILE, FM123, 01/2026;-19,99\n");
+    expect(r.delimiter).toBe(";");
+    expect(r.headers).toEqual(["Date", "Libellé", "Montant"]);
+    expect(r.rows).toEqual([["02/01/2026", "PRLV FREE MOBILE, FM123, 01/2026", "-19,99"]]);
+  });
+  it("idem en débit/crédit avec plusieurs virgules dans un libellé", () => {
+    const r = parseCsv(
+      "Date;Libellé;Débit;Crédit\n02/01/2026;CB AMAZON, PAYMENTS, EU, LUX, 1234;45,90;\n03/01/2026;VIR;;1 200,00\n",
+    );
+    expect(r.delimiter).toBe(";");
+    expect(r.headers).toEqual(["Date", "Libellé", "Débit", "Crédit"]);
+    expect(r.rows).toHaveLength(2);
+    expect(r.rows[0][1]).toBe("CB AMAZON, PAYMENTS, EU, LUX, 1234");
+  });
+  it("détecte « , » pour un export anglais et la tabulation", () => {
+    const en = parseCsv("Date,Description,Amount\n2026-01-02,Coffee,-3.50\n2026-01-03,Salary,2500.00\n");
+    expect(en.delimiter).toBe(",");
+    expect(en.headers).toEqual(["Date", "Description", "Amount"]);
+    const tab = parseCsv("Date\tLibellé\tMontant\n02/01/2026\tCafé, croissant\t-3,50\n");
+    expect(tab.delimiter).toBe("\t");
+    expect(tab.rows).toEqual([["02/01/2026", "Café, croissant", "-3,50"]]);
+  });
+  it("sans en-tête reconnu, un « ; » final sur les données ne fait pas perdre la 1re ligne", () => {
+    const r = parseCsv("Jour;Texte;Valeur\n01/01/2026;A;1;\n02/01/2026;B;2;\n03/01/2026;C;3;\n");
+    expect(r.headers).toEqual(["Jour", "Texte", "Valeur"]);
+    expect(r.rows).toHaveLength(3);
+  });
   it("mapRows utilise les numéros de ligne fournis", () => {
     const { errors } = mapRows([["pas une date", "x", "1"]], { date: 0, label: 1, amount: 2 }, [9]);
     expect(errors).toEqual([{ line: 9, reason: "Date invalide" }]);

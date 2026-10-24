@@ -17,113 +17,21 @@ export type ParsedTx = { date: string; label: string; amount: number };
 
 const DELIMITERS: Delimiter[] = [";", ",", "\t"];
 
-/** Nombre de lignes examinées pour détecter le délimiteur et la ligne d'en-tête. */
-const SCAN_LINES = 20;
+/** Nombre d'enregistrements examinés pour détecter le délimiteur et la ligne d'en-tête. */
+const SCAN_RECORDS = 20;
 
 /**
- * Délimiteur hors guillemets : celui qui apparaît le plus de fois sur une même ligne parmi les
- * premières lignes (« ; » par défaut). Le maximum par ligne résiste aux lignes de préambule
- * (« Solde : 1 234,56 ») comme aux virgules décimales des lignes de données.
+ * Découpe `src` en enregistrements avec `delimiter` : guillemets (doublés = guillemet littéral,
+ * délimiteurs et sauts de ligne autorisés à l'intérieur), lignes vides ignorées. `lines[i]` est
+ * la ligne du fichier (1 = première) où commence `records[i]`. S'arrête après `max` enregistrements.
  */
-function detectDelimiter(text: string): Delimiter {
-  const best = new Map<Delimiter, number>(DELIMITERS.map((d) => [d, 0]));
-  let counts = new Map<Delimiter, number>(DELIMITERS.map((d) => [d, 0]));
-  let lines = 0;
-  let inQuotes = false;
-  let fieldStart = true; // un guillemet n'ouvre un champ entre guillemets qu'en début de champ
-  let justClosed = false; // un guillemet juste après une fermeture = guillemet doublé (rouvre)
-  const endLine = () => {
-    for (const d of DELIMITERS) best.set(d, Math.max(best.get(d)!, counts.get(d)!));
-    counts = new Map(DELIMITERS.map((d) => [d, 0]));
-    lines++;
-    fieldStart = true;
-  };
-  for (const ch of text) {
-    if (inQuotes) {
-      if (ch === '"') {
-        inQuotes = false;
-        justClosed = true;
-      }
-      continue;
-    }
-    if (ch === '"' && (fieldStart || justClosed)) {
-      inQuotes = true;
-      fieldStart = false;
-      justClosed = false;
-      continue;
-    }
-    justClosed = false;
-    if (ch === "\n") {
-      endLine();
-      if (lines >= SCAN_LINES) break;
-    } else if (ch === "\r") {
-      // fin de ligne CRLF : seul « \n » compte
-    } else if (counts.has(ch as Delimiter)) {
-      counts.set(ch as Delimiter, counts.get(ch as Delimiter)! + 1);
-      fieldStart = true;
-    } else if (ch !== " ") {
-      fieldStart = false;
-    }
-  }
-  endLine();
-  let result: Delimiter = ";";
-  let resultCount = 0;
-  for (const d of DELIMITERS) {
-    if (best.get(d)! > resultCount) {
-      result = d;
-      resultCount = best.get(d)!;
-    }
-  }
-  return result;
-}
-
-/**
- * Indice de la ligne d'en-tête : la première (parmi les 20 premières) où `guessMapping` trouve
- * date, libellé et montant (ou débit/crédit) ; à défaut, la première ligne ayant le nombre de
- * champs le plus fréquent. Les exports bancaires commencent souvent par un préambule
- * (« Téléchargement du … », « Compte n° … », « Solde au … ») à ignorer.
- */
-function findHeaderIndex(records: string[][]): number {
-  const scanned = records.slice(0, SCAN_LINES);
-  const recognized = scanned.findIndex((r) => {
-    const m = guessMapping(r);
-    return (
-      m.date !== undefined &&
-      m.label !== undefined &&
-      (m.amount !== undefined || m.debit !== undefined || m.credit !== undefined)
-    );
-  });
-  if (recognized >= 0) return recognized;
-  const frequency = new Map<number, number>();
-  for (const r of records) frequency.set(r.length, (frequency.get(r.length) ?? 0) + 1);
-  let common = 0;
-  let commonCount = 0;
-  for (const [length, count] of frequency) {
-    if (count > commonCount || (count === commonCount && length > common)) {
-      common = length;
-      commonCount = count;
-    }
-  }
-  return Math.max(0, records.findIndex((r) => r.length === common));
-}
-
-/**
- * Parse un CSV : BOM retiré, délimiteur détecté, guillemets (doublés = guillemet littéral,
- * délimiteurs et sauts de ligne autorisés à l'intérieur), lignes vides ignorées.
- * La ligne d'en-tête est détectée (voir `findHeaderIndex`) : les lignes au-dessus sont ignorées.
- * `lines[i]` est le numéro de ligne dans le fichier (1 = première) où commence `rows[i]`.
- */
-export function parseCsv(text: string): {
-  headers: string[];
-  rows: string[][];
-  lines: number[];
-  delimiter: Delimiter;
-} {
-  const src = text.startsWith("﻿") ? text.slice(1) : text;
-  const delimiter = detectDelimiter(src);
-
+function splitRecords(
+  src: string,
+  delimiter: Delimiter,
+  max = Infinity,
+): { records: string[][]; lines: number[] } {
   const records: string[][] = [];
-  const recordLines: number[] = [];
+  const lines: number[] = [];
   let record: string[] = [];
   let line = 1; // ligne physique courante
   let recordStart = 1; // ligne où commence l'enregistrement en cours
@@ -140,12 +48,12 @@ export function parseCsv(text: string): {
     endField();
     if (record.some((f) => f !== "")) {
       records.push(record);
-      recordLines.push(recordStart);
+      lines.push(recordStart);
     }
     record = [];
   };
 
-  for (let i = 0; i < src.length; i++) {
+  for (let i = 0; i < src.length && records.length < max; i++) {
     const ch = src[i];
     if (inQuotes) {
       if (ch === "\n" || (ch === "\r" && src[i + 1] !== "\n")) line++;
@@ -169,14 +77,100 @@ export function parseCsv(text: string): {
       field += ch;
     }
   }
-  if (field !== "" || record.length > 0) endRecord();
+  if (records.length < max && (field !== "" || record.length > 0)) endRecord();
+  return { records, lines };
+}
 
+/** Nombre de champs d'un enregistrement, sans les champs vides finaux (« a;b;c; » → 3). */
+function fieldCount(record: string[]): number {
+  let n = record.length;
+  while (n > 0 && record[n - 1] === "") n--;
+  return n;
+}
+
+/** Vrai si `guessMapping` reconnaît date, libellé et montant (ou débit/crédit). */
+function isRecognizedHeader(record: string[]): boolean {
+  const m = guessMapping(record);
+  return (
+    m.date !== undefined &&
+    m.label !== undefined &&
+    (m.amount !== undefined || m.debit !== undefined || m.credit !== undefined)
+  );
+}
+
+/** Nombre de champs le plus fréquent (> 1) et son nombre d'occurrences ; [0, 0] si aucun. */
+function modalFieldCount(records: string[][]): [count: number, occurrences: number] {
+  const frequency = new Map<number, number>();
+  for (const r of records) {
+    const n = fieldCount(r);
+    if (n > 1) frequency.set(n, (frequency.get(n) ?? 0) + 1);
+  }
+  let best: [number, number] = [0, 0];
+  for (const [n, occ] of frequency) {
+    if (occ > best[1] || (occ === best[1] && n > best[0])) best = [n, occ];
+  }
+  return best;
+}
+
+/**
+ * Délimiteur choisi par cohérence sur les 20 premiers enregistrements : celui (ou parmi ceux)
+ * pour lequel un en-tête est reconnu ; puis celui dont le nombre de champs le plus fréquent
+ * revient sur le plus de lignes (puis le plus grand) ; égalité → « ; ». Une virgule dans un
+ * libellé ou une virgule décimale ne l'emporte donc pas sur « ; ».
+ */
+function detectDelimiter(src: string): Delimiter {
+  const candidates = DELIMITERS.map((delimiter) => ({
+    delimiter,
+    records: splitRecords(src, delimiter, SCAN_RECORDS).records,
+  }));
+  const withHeader = candidates.filter((c) => c.records.some(isRecognizedHeader));
+  const pool = withHeader.length > 0 ? withHeader : candidates;
+  let best = pool[0];
+  let bestScore = modalFieldCount(best.records);
+  for (const c of pool.slice(1)) {
+    const score = modalFieldCount(c.records);
+    if (score[1] > bestScore[1] || (score[1] === bestScore[1] && score[0] > bestScore[0])) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best.delimiter;
+}
+
+/**
+ * Indice de la ligne d'en-tête : la première (parmi les 20 premières) où `guessMapping` trouve
+ * date, libellé et montant (ou débit/crédit) ; à défaut, la première ligne ayant le nombre de
+ * champs le plus fréquent (champs vides finaux ignorés). Les exports bancaires commencent
+ * souvent par un préambule (« Téléchargement du … », « Compte n° … », « Solde au … ») à ignorer.
+ */
+function findHeaderIndex(records: string[][]): number {
+  const recognized = records.slice(0, SCAN_RECORDS).findIndex(isRecognizedHeader);
+  if (recognized >= 0) return recognized;
+  const [common] = modalFieldCount(records);
+  return Math.max(0, records.findIndex((r) => fieldCount(r) === common));
+}
+
+/**
+ * Parse un CSV : BOM retiré, délimiteur détecté (voir `detectDelimiter`), guillemets (doublés =
+ * guillemet littéral, délimiteurs et sauts de ligne autorisés à l'intérieur), lignes vides ignorées.
+ * La ligne d'en-tête est détectée (voir `findHeaderIndex`) : les lignes au-dessus sont ignorées.
+ * `lines[i]` est le numéro de ligne dans le fichier (1 = première) où commence `rows[i]`.
+ */
+export function parseCsv(text: string): {
+  headers: string[];
+  rows: string[][];
+  lines: number[];
+  delimiter: Delimiter;
+} {
+  const src = text.startsWith("﻿") ? text.slice(1) : text;
+  const delimiter = detectDelimiter(src);
+  const { records, lines } = splitRecords(src, delimiter);
   if (records.length === 0) return { headers: [], rows: [], lines: [], delimiter };
   const headerIndex = findHeaderIndex(records);
   return {
     headers: records[headerIndex],
     rows: records.slice(headerIndex + 1),
-    lines: recordLines.slice(headerIndex + 1),
+    lines: lines.slice(headerIndex + 1),
     delimiter,
   };
 }
