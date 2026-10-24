@@ -34,9 +34,15 @@ function cacheKey(month: string): string {
   return `insights:${month}`;
 }
 
-function readCache(db: Db, month: string): string[] | null {
+/** Durée de validité du cache pour le mois en cours (les mois passés sont figés). */
+export const CURRENT_MONTH_CACHE_MS = 24 * 3_600_000;
+
+/** Analyse en cache, ou null si absente, illisible ou périmée (mois en cours, plus de 24 h). */
+function readCache(db: Db, month: string, today: string, now: number): string[] | null {
   const row = db.select().from(aiCache).where(eq(aiCache.key, cacheKey(month))).get();
   if (!row) return null;
+  const isCurrentOrFuture = month >= today.slice(0, 7);
+  if (isCurrentOrFuture && now - row.createdAt >= CURRENT_MONTH_CACHE_MS) return null;
   try {
     const value: unknown = JSON.parse(row.value);
     return Array.isArray(value) && value.every((v) => typeof v === "string") ? value : null;
@@ -45,9 +51,8 @@ function readCache(db: Db, month: string): string[] | null {
   }
 }
 
-function writeCache(db: Db, month: string, insights: string[]): void {
+function writeCache(db: Db, month: string, insights: string[], createdAt: number): void {
   const value = JSON.stringify(insights);
-  const createdAt = Date.now();
   db.insert(aiCache)
     .values({ key: cacheKey(month), value, createdAt })
     .onConflictDoUpdate({ target: aiCache.key, set: { value, createdAt } })
@@ -139,7 +144,7 @@ export function monthData(db: Db, month: string, today: string) {
 
 const inflight = new Map<string, Promise<string[]>>();
 
-async function generate(db: Db, month: string, ai: Ai, today: string): Promise<string[]> {
+async function generate(db: Db, month: string, ai: Ai, today: string, now: number): Promise<string[]> {
   const data = monthData(db, month, today);
   const message = await ai.client.messages.parse({
     model: ai.model,
@@ -153,13 +158,14 @@ async function generate(db: Db, month: string, ai: Ai, today: string): Promise<s
     .filter((s) => s !== "")
     .slice(0, 5);
   if (insights.length === 0) throw new AiOutputError(`analyse vide (stop_reason=${message.stop_reason})`);
-  writeCache(db, month, insights);
+  writeCache(db, month, insights, now);
   return insights;
 }
 
 /**
  * 3 à 5 observations du mois « YYYY-MM », mises en cache dans `ai_cache` (`insights:<mois>`) ;
- * `refresh` force la régénération. Un mois sans transaction renvoie un message unique sans appel
+ * `refresh` force la régénération. Le cache du mois en cours expire après 24 h (régénéré à la
+ * demande suivante) ; celui d'un mois passé ne périme jamais. Un mois sans transaction renvoie un message unique sans appel
  * à l'API (et sans cache). Les appels simultanés pour un même mois partagent la même requête.
  */
 export async function getInsights(
@@ -168,6 +174,7 @@ export async function getInsights(
   refresh: boolean,
   ai?: Ai,
   today: string = todayLocal(),
+  now: number = Date.now(),
 ): Promise<string[]> {
   const { start, end } = monthRange(month);
   if (countTransactions(db, start, end) === 0) {
@@ -176,14 +183,14 @@ export async function getInsights(
     ];
   }
   if (!refresh) {
-    const cached = readCache(db, month);
+    const cached = readCache(db, month, today, now);
     if (cached) return cached;
   }
   const client = ai ?? requireAi();
   const key = cacheKey(month);
   const pending = inflight.get(key);
   if (pending) return pending;
-  const promise = generate(db, month, client, today).finally(() => inflight.delete(key));
+  const promise = generate(db, month, client, today, now).finally(() => inflight.delete(key));
   inflight.set(key, promise);
   return promise;
 }

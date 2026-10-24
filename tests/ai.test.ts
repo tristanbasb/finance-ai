@@ -344,6 +344,33 @@ describe("getInsights", () => {
   });
 });
 
+describe("getInsights — expiration du cache", () => {
+  const T0 = new Date("2026-10-24T08:00:00Z").getTime();
+  const HOUR = 3_600_000;
+
+  it("mois en cours : cache périmé après 24 h, régénéré à la demande suivante", async () => {
+    const db = freshDb();
+    seedTransactions(db);
+    const { ai, parse } = mockParseClient({ insights: ["A"] });
+    await getInsights(db, "2026-10", false, ai, "2026-10-24", T0);
+    await getInsights(db, "2026-10", false, ai, "2026-10-24", T0 + 23 * HOUR);
+    expect(parse).toHaveBeenCalledTimes(1);
+    await getInsights(db, "2026-10", false, ai, "2026-10-25", T0 + 25 * HOUR);
+    expect(parse).toHaveBeenCalledTimes(2);
+    const row = db.select().from(aiCache).where(eq(aiCache.key, "insights:2026-10")).get()!;
+    expect(row.createdAt).toBe(T0 + 25 * HOUR);
+  });
+
+  it("mois passé : le cache ne périme jamais", async () => {
+    const db = freshDb();
+    seedTransactions(db);
+    const { ai, parse } = mockParseClient({ insights: ["A"] });
+    await getInsights(db, "2026-10", false, ai, "2026-11-05", T0);
+    await getInsights(db, "2026-10", false, ai, "2027-03-01", T0 + 120 * 24 * HOUR);
+    expect(parse).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("chat", () => {
   it("encodeSse produit un événement SSE data: JSON", () => {
     expect(encodeSse({ type: "text", text: "Bonjour\n" })).toBe('data: {"type":"text","text":"Bonjour\\n"}\n\n');
