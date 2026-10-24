@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "60d53757-ed2d-4747-ad04-aae7626035f6",
+  "id": "3a0929e8-6a8c-478a-aa0a-72f324364e1a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "accounts": {
@@ -271,14 +271,14 @@
         },
         "avg_price": {
           "name": "avg_price",
-          "type": "integer",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "manual_price": {
           "name": "manual_price",
-          "type": "integer",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -332,7 +332,7 @@
         },
         "price": {
           "name": "price",
-          "type": "integer",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

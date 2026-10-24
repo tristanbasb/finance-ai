@@ -2,6 +2,8 @@ import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core
 
 // Convention : montants en centimes (entiers), dates « YYYY-MM-DD » (texte),
 // horodatages en millisecondes depuis l'epoch (entiers).
+// Exception : les prix unitaires (prices.price, holdings.avg_price, holdings.manual_price)
+// sont des réels exprimés en centimes (fractions permises, ex. 0.001 pour 0,00001 €).
 const now = () => Date.now();
 
 export const ACCOUNT_TYPES = ["checking", "savings", "investment", "crypto", "other"] as const;
@@ -69,8 +71,8 @@ export const holdings = sqliteTable(
     name: text("name").notNull(),
     assetType: text("asset_type", { enum: ASSET_TYPES }).notNull(),
     quantity: real("quantity").notNull(),
-    avgPrice: integer("avg_price").notNull(),
-    manualPrice: integer("manual_price"),
+    avgPrice: real("avg_price").notNull(),
+    manualPrice: real("manual_price"),
     currency: text("currency").notNull().default("EUR"),
   },
   (t) => [index("holdings_account_id_idx").on(t.accountId)],
@@ -78,7 +80,7 @@ export const holdings = sqliteTable(
 
 export const prices = sqliteTable("prices", {
   symbol: text("symbol").primaryKey(),
-  price: integer("price").notNull(),
+  price: real("price").notNull(),
   currency: text("currency").notNull(),
   fetchedAt: integer("fetched_at").notNull(),
 });

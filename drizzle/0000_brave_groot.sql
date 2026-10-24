@@ -41,8 +41,8 @@ CREATE TABLE `holdings` (
 	`name` text NOT NULL,
 	`asset_type` text NOT NULL,
 	`quantity` real NOT NULL,
-	`avg_price` integer NOT NULL,
-	`manual_price` integer,
+	`avg_price` real NOT NULL,
+	`manual_price` real,
 	`currency` text DEFAULT 'EUR' NOT NULL,
 	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE restrict
 );
@@ -50,7 +50,7 @@ CREATE TABLE `holdings` (
 CREATE INDEX `holdings_account_id_idx` ON `holdings` (`account_id`);--> statement-breakpoint
 CREATE TABLE `prices` (
 	`symbol` text PRIMARY KEY NOT NULL,
-	`price` integer NOT NULL,
+	`price` real NOT NULL,
 	`currency` text NOT NULL,
 	`fetched_at` integer NOT NULL
 );

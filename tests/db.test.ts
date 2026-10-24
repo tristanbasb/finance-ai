@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { accounts, categories, transactions } from "@/lib/db/schema";
+import { accounts, categories, holdings, prices, transactions } from "@/lib/db/schema";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -74,5 +74,31 @@ describe("base de données", () => {
       .values({ accountId: account.id, date: "2026-10-24", amount: 500, label: "Salaire" })
       .run();
     expect(() => db.delete(accounts).where(eq(accounts.id, account.id)).run()).toThrow();
+  });
+});
+
+describe("prix unitaires fractionnaires", () => {
+  it("conserve exactement un prix de revient de 0.0025 centime", () => {
+    const db = freshDb();
+    seedDefaults(db);
+    const account = db.select().from(accounts).get()!;
+    const holding = db
+      .insert(holdings)
+      .values({
+        accountId: account.id,
+        symbol: "SHIB",
+        name: "Shiba Inu",
+        assetType: "crypto",
+        quantity: 1_000_000,
+        avgPrice: 0.0025,
+        manualPrice: 0.003,
+      })
+      .returning()
+      .get();
+    expect(holding.avgPrice).toBe(0.0025);
+    expect(holding.manualPrice).toBe(0.003);
+
+    db.insert(prices).values({ symbol: "SHIB", price: 0.0025, currency: "EUR", fetchedAt: 1 }).run();
+    expect(db.select().from(prices).get()!.price).toBe(0.0025);
   });
 });
