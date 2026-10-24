@@ -60,4 +60,42 @@ describe("POST /api/auth/login", () => {
       error: "Trop de tentatives, réessayez dans quelques minutes.",
     });
   });
+
+  it("refuse en 413 un corps annoncé de plus de 10 Ko, sans le compter comme tentative", async () => {
+    for (let i = 0; i < 8; i++) {
+      const res = await POST(
+        new Request("http://localhost:3000/api/auth/login", {
+          method: "POST",
+          headers: { "content-type": "application/json", "content-length": "20000" },
+          body: "x",
+        }),
+      );
+      expect(res.status).toBe(413);
+    }
+    expect((await POST(loginRequest("mauvais"))).status).toBe(401);
+  });
+
+  it("refuse en 413 un corps réel de plus de 10 Ko (sans Content-Length fiable)", async () => {
+    const big = JSON.stringify({ password: "a".repeat(20_000) });
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(big));
+        controller.close();
+      },
+    });
+    const res = await POST(
+      new Request("http://localhost:3000/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: stream,
+        duplex: "half",
+      } as RequestInit),
+    );
+    expect(res.status).toBe(413);
+  });
+
+  it("refuse un mot de passe de plus de 1024 caractères", async () => {
+    const res = await POST(loginRequest("a".repeat(1025)));
+    expect(res.status).toBe(400);
+  });
 });
