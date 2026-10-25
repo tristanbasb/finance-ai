@@ -6,7 +6,14 @@ import { Maximize2, PanelRightClose, Sparkles, SquarePen, X } from "lucide-react
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { excerpt, hasSavedQuestion, kindLabel, unreadAssistantIds, type ThreadMessage } from "@/lib/assistant-thread";
+import {
+  excerpt,
+  hasSavedQuestion,
+  kindLabel,
+  tailIsBehind,
+  unreadAssistantIds,
+  type ThreadMessage,
+} from "@/lib/assistant-thread";
 import { errorMessage } from "@/lib/http";
 import { decodeSse } from "@/lib/sse";
 import { cn } from "@/lib/cn";
@@ -14,7 +21,6 @@ import { useAssistant } from "./assistant-provider";
 import { Composer } from "./composer";
 import { ModelSelect } from "./model-select";
 import { ThreadView, useThread, type PendingUser, type ThreadFailure } from "./thread";
-import { UNREAD_POLL_MS } from "./use-unread";
 
 export { SUGGESTIONS, TOOL_LABELS, toolLabel } from "./thread";
 
@@ -63,25 +69,27 @@ export function AssistantConversation({
     return fresh;
   }, [refreshTail]);
 
-  // Le fil ouvert se recharge régulièrement (messages Telegram, alertes) et au retour sur l'onglet.
+  // Pas de relevé périodique propre au fil : `useUnread` (cloche) interroge déjà le serveur toutes
+  // les 20 s. Un non-lu plus récent que le fil affiché déclenche le rechargement de sa fin ; le
+  // retour sur l'onglet le recharge aussi (messages Telegram envoyés entre-temps).
   useEffect(() => {
-    const tick = () => {
+    const onVisible = () => {
       if (document.visibilityState === "visible" && !streamingRef.current) void reloadTail();
     };
-    const timer = setInterval(tick, UNREAD_POLL_MS);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reloadTail]);
 
-  // Un non-lu plus récent que le fil affiché (détecté par la cloche) : rechargement immédiat.
   const lastId = messages[messages.length - 1]?.id ?? 0;
-  const newestUnread = unread.latest[0]?.id ?? 0;
+  const behind = tailIsBehind({
+    ready: thread.status === "ready",
+    streaming,
+    lastId,
+    unread: unread.latest,
+  });
   useEffect(() => {
-    if (thread.status === "ready" && newestUnread > lastId && !streamingRef.current) void reloadTail();
-  }, [newestUnread, lastId, thread.status, reloadTail]);
+    if (behind && !streamingRef.current) void reloadTail();
+  }, [behind, unread.latest, reloadTail]);
 
   // Marquage « lu » groupé des messages affichés.
   const toMark = useRef(new Set<number>());

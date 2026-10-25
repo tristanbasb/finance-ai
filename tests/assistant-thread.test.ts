@@ -9,6 +9,7 @@ import {
   mergeMessages,
   relativeTime,
   takeNewUnread,
+  tailIsBehind,
   unreadAssistantIds,
   type ThreadMessage,
 } from "@/lib/assistant-thread";
@@ -196,5 +197,20 @@ describe("hasSavedQuestion", () => {
   it("rechargement échoué ou question venue de Telegram : non retrouvée", () => {
     expect(hasSavedQuestion(null, "Mes budgets ?")).toBe(false);
     expect(hasSavedQuestion([msg(5, { role: "user", source: "telegram", content: "Mes budgets ?" })], "Mes budgets ?")).toBe(false);
+  });
+});
+
+describe("tailIsBehind (rechargement du fil piloté par le relevé des non-lus)", () => {
+  const base = { ready: true, streaming: false, lastId: 5 };
+  it("recharge si un non-lu est plus récent que le dernier message affiché", () => {
+    expect(tailIsBehind({ ...base, unread: [msg(4), msg(7)] })).toBe(true);
+  });
+  it("ne recharge pas si le fil contient déjà tous les non-lus", () => {
+    expect(tailIsBehind({ ...base, unread: [msg(5), msg(3)] })).toBe(false);
+    expect(tailIsBehind({ ...base, unread: [] })).toBe(false);
+  });
+  it("attend la fin du chargement initial et d'une réponse en cours", () => {
+    expect(tailIsBehind({ ...base, ready: false, unread: [msg(9)] })).toBe(false);
+    expect(tailIsBehind({ ...base, streaming: true, unread: [msg(9)] })).toBe(false);
   });
 });

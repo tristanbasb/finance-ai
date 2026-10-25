@@ -144,6 +144,26 @@ export function takeNewUnread(latest: readonly ThreadMessage[], seen: Set<number
   return fresh.sort((a, b) => a.id - b.id);
 }
 
+/**
+ * Le fil affiché est en retard sur les non-lus relevés par la cloche (`useUnread`, seul relevé
+ * périodique) : un rechargement de la fin du fil s'impose. Jamais avant le premier chargement
+ * ni pendant une réponse en cours (le fil est rechargé à sa fin).
+ */
+export function tailIsBehind({
+  ready,
+  streaming,
+  lastId,
+  unread,
+}: {
+  ready: boolean;
+  streaming: boolean;
+  lastId: number;
+  unread: readonly ThreadMessage[];
+}): boolean {
+  if (!ready || streaming) return false;
+  return unread.some((m) => m.id > lastId);
+}
+
 /** Libellé de pastille : « 9+ » au-delà de 9. */
 export function badgeCount(count: number): string {
   return count > 9 ? "9+" : String(count);
