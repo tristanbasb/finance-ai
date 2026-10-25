@@ -6,6 +6,8 @@ import { listCategories } from "@/lib/queries/categories";
 import { AccountsManager } from "@/components/settings/accounts-manager";
 import { AiStatus } from "@/components/settings/ai-status";
 import { CategoriesManager } from "@/components/settings/categories-manager";
+import { NotificationsSettings } from "@/components/settings/notifications-settings";
+import { TelegramSettings } from "@/components/settings/telegram-settings";
 import { LogoutButton } from "@/components/logout-button";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +67,8 @@ export default function SettingsPage() {
       </Card>
 
       <AiStatus />
+      <NotificationsSettings />
+      <TelegramSettings />
 
       <Card id="securite" className="scroll-mt-6">
         <CardHeader>

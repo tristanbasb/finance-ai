@@ -12,7 +12,16 @@ type Model = { id: string; name: string };
  * Choix du modèle Claude (liste de `GET /api/ai/models`, enregistrement par
  * `PUT /api/settings/model`). En cas d'échec, la valeur précédente est rétablie.
  */
-export function ModelSelect({ className, label = "Modèle" }: { className?: string; label?: string }) {
+export function ModelSelect({
+  className,
+  label = "Modèle",
+  size = "compact",
+}: {
+  className?: string;
+  label?: string;
+  /** `compact` : en-tête du chat ; `field` : champ de formulaire pleine largeur. */
+  size?: "compact" | "field";
+}) {
   const id = useId();
   const [models, setModels] = useState<Model[] | null>(null);
   const [current, setCurrent] = useState("");
@@ -65,7 +74,7 @@ export function ModelSelect({ className, label = "Modèle" }: { className?: stri
 
   return (
     <div className={cn("relative", className)}>
-      <label htmlFor={id} className="sr-only">
+      <label htmlFor={id} className={size === "compact" ? "sr-only" : "mb-1.5 block text-[13px] font-medium text-fg"}>
         {label}
       </label>
       <select
@@ -75,8 +84,9 @@ export function ModelSelect({ className, label = "Modèle" }: { className?: stri
         onChange={(e) => void change(e.target.value)}
         title="Modèle Claude utilisé pour les réponses"
         className={cn(
-          "h-8 max-w-[11.5rem] cursor-pointer appearance-none truncate rounded-lg border border-border bg-surface pl-2.5 pr-7 text-[13px] text-fg",
+          "cursor-pointer appearance-none truncate rounded-lg border border-border bg-surface text-fg",
           "transition-[border-color] duration-150 hover:border-border-strong disabled:cursor-wait disabled:opacity-60",
+          size === "compact" ? "h-8 max-w-[11.5rem] pl-2.5 pr-7 text-[13px]" : "h-10 w-full pl-3 pr-9 text-sm",
         )}
       >
         {models === null ? (
@@ -91,7 +101,10 @@ export function ModelSelect({ className, label = "Modèle" }: { className?: stri
       </select>
       <ChevronDown
         aria-hidden
-        className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
+        className={cn(
+          "pointer-events-none absolute text-subtle",
+          size === "compact" ? "right-2 top-1/2 size-3.5 -translate-y-1/2" : "bottom-3 right-3 size-4",
+        )}
       />
     </div>
   );

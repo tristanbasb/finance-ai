@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { ModelSettings } from "@/components/settings/model-settings";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -51,16 +52,17 @@ export function AiStatus() {
         </CardTitle>
         <CardDescription>Analyses de vos dépenses et suggestions de catégories, propulsées par Claude.</CardDescription>
       </CardHeader>
-      <CardContent aria-live="polite" aria-busy={state.kind === "loading"}>
+      <CardContent className="space-y-4">
+        <ModelSettings />
+        <div aria-live="polite" aria-busy={state.kind === "loading"}>
         {state.kind === "loading" && (
           <div className="h-4 w-48 animate-pulse rounded-full bg-surface-2" aria-label="Vérification en cours" />
         )}
 
         {state.kind === "enabled" && (
-          <dl className="text-[13px]">
-            <dt className="text-muted">Modèle</dt>
-            <dd className="mt-0.5 font-mono text-sm text-fg">{state.model || "Non précisé"}</dd>
-          </dl>
+          <p className="text-[13px] text-muted">
+            Modèle actif : <span className="font-mono text-fg">{state.model || "non précisé"}</span>
+          </p>
         )}
 
         {state.kind === "disabled" && (
@@ -82,6 +84,7 @@ export function AiStatus() {
             </ol>
           </div>
         )}
+        </div>
       </CardContent>
     </Card>
   );
