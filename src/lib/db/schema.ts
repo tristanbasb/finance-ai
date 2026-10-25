@@ -141,3 +141,14 @@ export const jobRuns = sqliteTable("job_runs", {
   lastPeriod: text("last_period").notNull(),
   lastRunAt: integer("last_run_at").notNull(),
 });
+
+/** Journal des modifications faites par Claude (états avant/après en JSON texte), annulables sous 24 h. */
+export const aiActions = sqliteTable("ai_actions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  messageId: integer("message_id"),
+  tool: text("tool").notNull(),
+  summary: text("summary").notNull(),
+  changes: text("changes").notNull(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  undoneAt: integer("undone_at"),
+});
