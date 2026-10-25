@@ -52,7 +52,8 @@ export const aiTools: Anthropic.Tool[] = [
     name: "get_overview",
     description:
       "Vue d'ensemble actuelle : patrimoine net, liquidités, investissements, soldes des comptes, " +
-      "revenus/dépenses et taux d'épargne du mois en cours, budgets mensuels et consommation. Montants en euros.",
+      "revenus/dépenses et taux d'épargne du mois en cours, budgets mensuels et consommation, " +
+      "et la liste de toutes les catégories (id, nom, sens expense/income, budget mensuel ou null). Montants en euros.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -150,6 +151,12 @@ function getOverviewTool(db: Db, today: string) {
       spent: eur(b.spent),
       used_pct: pct(b.status.pct),
       status: b.status.level,
+    })),
+    categories: listCategories(db).map((c) => ({
+      id: c.id,
+      name: c.name,
+      kind: c.kind,
+      budget: c.monthlyBudget === null ? null : eur(c.monthlyBudget),
     })),
   };
 }

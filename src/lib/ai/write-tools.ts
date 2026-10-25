@@ -7,6 +7,7 @@ import { accounts, categories, goals, holdings, transactions } from "@/lib/db/sc
 import { ACCOUNT_TYPES, ASSET_TYPES } from "@/lib/db/schema";
 import { ConflictError, NotFoundError } from "@/lib/api";
 import { runAlertChecks, type AlertScope } from "@/lib/alerts/engine";
+import { CATEGORY_ICON_NAMES } from "@/components/category-icon";
 import { formatEUR } from "@/lib/money";
 import { defaultAccountId, MAX_AMOUNT_CENTS } from "@/lib/quick-add";
 import { createAccount, updateAccount } from "@/lib/queries/accounts";
@@ -63,13 +64,8 @@ const CATEGORY_COLORS = [
   "#a855f7", "#ec4899", "#ef4444", "#f97316", "#f59e0b", "#94a3b8",
 ] as const;
 
-// Icônes connues de l'interface (`src/components/category-icon.tsx`).
-const CATEGORY_ICONS = [
-  "shopping-cart", "home", "car", "gamepad-2", "heart-pulse", "repeat", "shopping-bag", "utensils",
-  "plane", "circle-ellipsis", "briefcase", "coins", "wallet", "piggy-bank", "trending-up", "gift",
-  "graduation-cap", "baby", "paw-print", "shirt", "fuel", "train", "zap", "smartphone", "book-open",
-  "dumbbell", "tag",
-] as const;
+// Icônes proposées par l'interface (module sans "use client" : importable côté serveur).
+const CATEGORY_ICONS = CATEGORY_ICON_NAMES;
 const DEFAULT_ICON = "circle-ellipsis";
 
 // ---------------------------------------------------------------------------
@@ -226,7 +222,11 @@ const euros = z
   .refine((x) => Math.abs(Math.round(x * 100)) <= MAX_AMOUNT_CENTS, "Montant trop élevé");
 const positiveEuros = euros.refine((x) => x > 0, "Le montant doit être supérieur à 0");
 const nonNegativeEuros = euros.refine((x) => x >= 0, "Le montant doit être positif ou nul");
-const unitPrice = z.number().finite().nonnegative();
+// Bornes larges mais finies : le passage en centimes (x 100) ne peut pas déborder.
+const MAX_UNIT_PRICE_EUR = 1e9;
+const MAX_QUANTITY = 1e12;
+const unitPrice = z.number().finite().nonnegative().max(MAX_UNIT_PRICE_EUR, "Prix unitaire trop élevé");
+const quantity = z.number().finite().positive().max(MAX_QUANTITY, "Quantité trop élevée");
 const toCents = (x: number) => Math.round(x * 100);
 
 const accountRef = { account_id: id.optional(), account: text.optional() };
@@ -313,7 +313,7 @@ const schemas = {
       symbol: z.string().trim().min(1).max(30),
       name: text,
       asset_type: z.enum(ASSET_TYPES),
-      quantity: z.number().finite().positive(),
+      quantity,
       avg_price: unitPrice,
       manual_price: unitPrice.optional(),
     })
@@ -325,7 +325,7 @@ const schemas = {
       symbol: z.string().trim().min(1).max(30).optional(),
       name: text.optional(),
       asset_type: z.enum(ASSET_TYPES).optional(),
-      quantity: z.number().finite().positive().optional(),
+      quantity: quantity.optional(),
       avg_price: unitPrice.optional(),
       manual_price: unitPrice.nullable().optional(),
     })
@@ -767,9 +767,33 @@ function triggerAlerts(db: Db, scope: AlertScope): void {
   }
 }
 
+const UNCHANGED_SUMMARY = "Aucun changement : les valeurs demandées sont déjà en place.";
+
+// Champs des schémas de l'API (camelCase) → paramètres des outils exposés à Claude.
+const FIELD_NAMES: Record<string, string> = {
+  accountId: "account_id",
+  categoryId: "category_id",
+  assetType: "asset_type",
+  avgPrice: "avg_price",
+  manualPrice: "manual_price",
+  initialBalance: "initial_balance",
+  currentAmount: "current_amount",
+  targetAmount: "target",
+  monthlyBudget: "amount",
+};
+
+/** Message d'une erreur zod d'un schéma interne, avec le nom du paramètre de l'outil. */
+export function toolIssueMessage(err: ZodError): string {
+  const issue = err.issues[0];
+  const path = issue?.path
+    .map((p) => (typeof p === "string" ? (FIELD_NAMES[p] ?? p.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)) : String(p)))
+    .join(".");
+  return `Paramètres invalides${path ? ` (${path})` : ""} : ${issue?.message ?? "entrée refusée"}`;
+}
+
 function errorMessage(err: unknown, name: string): string {
   if (err instanceof ToolError || err instanceof ConflictError) return err.message;
-  if (err instanceof ZodError) return firstIssue(err);
+  if (err instanceof ZodError) return toolIssueMessage(err);
   if (err instanceof NotFoundError) return "Élément introuvable.";
   if (err instanceof Error && (err as { code?: unknown }).code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
     return "Référence invalide ou données liées.";
@@ -799,7 +823,7 @@ export async function runWriteTool(db: Db, name: string, input: unknown, ctx: Wr
       return { done, actionId };
     });
     if (actionId === undefined) {
-      return { result: { ok: true, unchanged: true, summary: `Déjà à jour : ${done.summary}`, ...done.data } };
+      return { result: { ok: true, unchanged: true, summary: UNCHANGED_SUMMARY, ...done.data } };
     }
     if (done.alerts) triggerAlerts(db, done.alerts);
     return { result: { ok: true, summary: done.summary, ...done.data }, actionId };
@@ -818,7 +842,7 @@ const RULES =
 
 const ACCOUNT_ID = { type: "integer", description: "Id du compte (renvoyé par get_overview)." } as const;
 const ACCOUNT_NAME = { type: "string", description: "Nom exact du compte (casse et accents ignorés), à défaut de account_id." } as const;
-const CATEGORY_ID = { type: "integer", description: "Id de la catégorie (renvoyé par search_transactions ou get_overview)." } as const;
+const CATEGORY_ID = { type: "integer", description: "Id de la catégorie (liste `categories` de get_overview, avec son sens)." } as const;
 const CATEGORY_NAME = { type: "string", description: "Nom exact de la catégorie (casse et accents ignorés), à défaut de category_id." } as const;
 const DATE = { type: "string", description: "Date YYYY-MM-DD." } as const;
 const KIND = { type: "string", enum: ["expense", "income"], description: "expense = dépense, income = revenu." } as const;
@@ -1016,9 +1040,9 @@ export const writeTools: Anthropic.Tool[] = [
         symbol: { type: "string", description: "Symbole (ex. CW8.PA, BTC)." },
         name: { type: "string" },
         asset_type: { type: "string", enum: [...ASSET_TYPES] },
-        quantity: { type: "number", exclusiveMinimum: 0 },
-        avg_price: { type: "number", minimum: 0, description: "Prix de revient unitaire moyen en euros." },
-        manual_price: { type: "number", minimum: 0, description: "Prix unitaire manuel en euros." },
+        quantity: { type: "number", exclusiveMinimum: 0, maximum: MAX_QUANTITY },
+        avg_price: { type: "number", minimum: 0, maximum: MAX_UNIT_PRICE_EUR, description: "Prix de revient unitaire moyen en euros." },
+        manual_price: { type: "number", minimum: 0, maximum: MAX_UNIT_PRICE_EUR, description: "Prix unitaire manuel en euros." },
       },
       ["symbol", "name", "asset_type", "quantity", "avg_price"],
     ),
@@ -1036,9 +1060,9 @@ export const writeTools: Anthropic.Tool[] = [
         symbol: { type: "string" },
         name: { type: "string" },
         asset_type: { type: "string", enum: [...ASSET_TYPES] },
-        quantity: { type: "number", exclusiveMinimum: 0 },
-        avg_price: { type: "number", minimum: 0, description: "Prix de revient unitaire moyen en euros." },
-        manual_price: { type: ["number", "null"], minimum: 0, description: "Prix unitaire manuel en euros, ou null." },
+        quantity: { type: "number", exclusiveMinimum: 0, maximum: MAX_QUANTITY },
+        avg_price: { type: "number", minimum: 0, maximum: MAX_UNIT_PRICE_EUR, description: "Prix de revient unitaire moyen en euros." },
+        manual_price: { type: ["number", "null"], minimum: 0, maximum: MAX_UNIT_PRICE_EUR, description: "Prix unitaire manuel en euros, ou null." },
       },
       ["id"],
     ),

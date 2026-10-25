@@ -11,12 +11,15 @@ import { seedDefaults } from "@/lib/db/seed";
 import { actionStatus, undoAction, type Change } from "@/lib/ai/actions";
 import { aiTools, runTool } from "@/lib/ai/tools";
 import { formatEUR } from "@/lib/money";
+import { categoryInput, goalInput, holdingInput } from "@/lib/validation";
+import { CATEGORY_ICON_NAMES } from "@/components/category-icon";
 import {
   MAX_WRITES_PER_RESPONSE,
   WRITE_TOOL_NAMES,
   resolveAccount,
   resolveCategory,
   runWriteTool,
+  toolIssueMessage,
   writeTools,
 } from "@/lib/ai/write-tools";
 
@@ -395,5 +398,55 @@ describe("outils de lecture : identifiants exposés", () => {
   it("l'état d'annulation reste cohérent après une écriture", async () => {
     const out = await run("add_transaction", { amount: 3, kind: "expense", label: "Kiosque" });
     expect(actionStatus(db, out.actionId!).undoable).toBe(true);
+  });
+});
+
+describe("corrections de revue", () => {
+  it("rien n'a changé → résumé neutre, aucune action", async () => {
+    await run("set_budget", { category: "Loisirs", amount: 150 });
+    const out = await run("set_budget", { category: "Loisirs", amount: 150 });
+    expect(out.actionId).toBeUndefined();
+    expect(out.result).toMatchObject({ ok: true, unchanged: true });
+    expect((out.result as Ok).summary).toBe("Aucun changement : les valeurs demandées sont déjà en place.");
+  });
+
+  it("prix unitaire ou quantité démesurés → refusés à l'entrée, champ en snake_case", async () => {
+    for (const input of [
+      { account_id: checkingId, symbol: "X", name: "X", asset_type: "etf", quantity: 1, avg_price: 1e308 },
+      { account_id: checkingId, symbol: "X", name: "X", asset_type: "etf", quantity: 1e300, avg_price: 1 },
+      { account_id: checkingId, symbol: "X", name: "X", asset_type: "etf", quantity: 1, avg_price: 1, manual_price: 1e308 },
+    ]) {
+      const out = await run("add_holding", input);
+      expectError(out, /Paramètres invalides \((avg_price|quantity|manual_price)\)/);
+      expect((out.result as Err).error).not.toMatch(/Infinity|avgPrice|manualPrice/);
+    }
+    expect(db.select().from(holdings).all()).toHaveLength(0);
+  });
+
+  it("erreur d'un schéma interne → chemin traduit en nom de champ de l'outil", () => {
+    const err = holdingInput.safeParse({ accountId: 0, symbol: "X", name: "X", assetType: "etf", quantity: 1, avgPrice: -1 }).error!;
+    expect(toolIssueMessage(err)).toMatch(/^Paramètres invalides \((account_id|avg_price)\)/);
+    const goal = goalInput.safeParse({ name: "X", targetAmount: 0 }).error!;
+    expect(toolIssueMessage(goal)).toMatch(/^Paramètres invalides \(target\)/);
+    const budget = categoryInput.partial().safeParse({ monthlyBudget: -1 }).error!;
+    expect(toolIssueMessage(budget)).toMatch(/^Paramètres invalides \(amount\)/);
+  });
+
+  it("icônes de catégorie : liste de l'interface", () => {
+    const def = writeTools.find((t) => t.name === "create_category")!;
+    const icon = (def.input_schema.properties as Record<string, { enum: string[] }>).icon;
+    expect(icon.enum).toEqual([...CATEGORY_ICON_NAMES]);
+  });
+
+  it("get_overview liste toutes les catégories avec id, sens et budget", async () => {
+    const o = (await runTool(db, "get_overview", {}, TODAY)) as {
+      categories: { id: number; name: string; kind: string; budget: number | null }[];
+    };
+    const all = db.select().from(categories).all();
+    expect(o.categories).toHaveLength(all.length);
+    expect(o.categories.find((c) => c.name === "Salaire")).toMatchObject({ id: catId("Salaire"), kind: "income", budget: null });
+    await run("set_budget", { category: "Loisirs", amount: 321.5 });
+    const o2 = (await runTool(db, "get_overview", {}, TODAY)) as typeof o;
+    expect(o2.categories.find((c) => c.name === "Loisirs")).toMatchObject({ kind: "expense", budget: 321.5 });
   });
 });
