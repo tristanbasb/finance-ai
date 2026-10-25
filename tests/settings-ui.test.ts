@@ -7,6 +7,7 @@ import {
   numberToInput,
   parsePriceMovePct,
   parseUnusualMinEur,
+  revertKeys,
 } from "@/lib/settings-ui";
 
 describe("hourLabel / HOUR_OPTIONS", () => {
@@ -62,5 +63,14 @@ describe("numberToInput / botDeepLink", () => {
   });
   it("construit le lien direct", () => {
     expect(botDeepLink("mon_bot", "123456")).toBe("https://t.me/mon_bot?start=123456");
+  });
+});
+
+describe("revertKeys", () => {
+  it("ne rétablit que les clés du patch", () => {
+    const previous = { a: 1, b: 1, c: 1 };
+    const state = { a: 2, b: 2, c: 3 };
+    expect(revertKeys(state, previous, { a: 2 })).toEqual({ a: 1, b: 2, c: 3 });
+    expect(state).toEqual({ a: 2, b: 2, c: 3 });
   });
 });

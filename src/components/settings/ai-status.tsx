@@ -6,7 +6,7 @@ import { ModelSettings } from "@/components/settings/model-settings";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-type State = { kind: "loading" } | { kind: "disabled" } | { kind: "enabled"; model: string };
+type State = { kind: "loading" } | { kind: "disabled" } | { kind: "enabled" };
 
 /**
  * Section « Assistant IA ». Toute réponse non OK de /api/ai/status vaut « Non configuré ».
@@ -21,12 +21,10 @@ export function AiStatus() {
       try {
         const res = await fetch("/api/ai/status", { signal: controller.signal, cache: "no-store" });
         if (!res.ok) throw new Error();
-        const body = (await res.json()) as { enabled?: unknown; model?: unknown };
+        const body = (await res.json()) as { enabled?: unknown };
         if (controller.signal.aborted) return;
         setState(
-          body.enabled === true
-            ? { kind: "enabled", model: typeof body.model === "string" ? body.model : "" }
-            : { kind: "disabled" },
+          body.enabled === true ? { kind: "enabled" } : { kind: "disabled" },
         );
       } catch {
         if (!controller.signal.aborted) setState({ kind: "disabled" });
@@ -57,12 +55,6 @@ export function AiStatus() {
         <div aria-live="polite" aria-busy={state.kind === "loading"}>
         {state.kind === "loading" && (
           <div className="h-4 w-48 animate-pulse rounded-full bg-surface-2" aria-label="Vérification en cours" />
-        )}
-
-        {state.kind === "enabled" && (
-          <p className="text-[13px] text-muted">
-            Modèle actif : <span className="font-mono text-fg">{state.model || "non précisé"}</span>
-          </p>
         )}
 
         {state.kind === "disabled" && (

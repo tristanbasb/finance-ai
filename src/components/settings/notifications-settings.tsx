@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -9,7 +9,7 @@ import { toast } from "@/components/ui/toast";
 import { controlClasses } from "@/components/ui/field";
 import { errorMessage } from "@/lib/http";
 import { cn } from "@/lib/cn";
-import { HOUR_OPTIONS, numberToInput, parsePriceMovePct, parseUnusualMinEur } from "@/lib/settings-ui";
+import { HOUR_OPTIONS, numberToInput, parsePriceMovePct, parseUnusualMinEur, revertKeys } from "@/lib/settings-ui";
 
 /** Les classes de champ sans hauteur ni largeur imposées (cn ne résout pas les conflits). */
 const numberClasses = controlClasses.replace("h-10 w-full ", "");
@@ -116,10 +116,58 @@ function NumberField({
   );
 }
 
+/**
+ * Préférences d'une section, enregistrées de façon optimiste : mise à jour immédiate, envois
+ * sérialisés, réponse appliquée seulement si c'est la dernière demande, échec : seules les clés
+ * du patch sont rétablies.
+ */
+function usePrefs<T extends object>(url: string) {
+  const [value, setValue] = useState<T | null>(null);
+  const latest = useRef<T | null>(null);
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const seq = useRef(0);
+
+  const apply = useCallback((updater: (prev: T | null) => T | null) => {
+    latest.current = updater(latest.current);
+    setValue(latest.current);
+  }, []);
+
+  const init = useCallback((initial: T) => apply(() => initial), [apply]);
+
+  const patch = useCallback(
+    (changes: Partial<T>): Promise<boolean> => {
+      const previous = latest.current;
+      if (!previous) return Promise.resolve(false);
+      const id = ++seq.current;
+      apply((p) => (p ? { ...p, ...changes } : p));
+      const run = chain.current.then(async () => {
+        try {
+          const saved = await save<T>(url, changes);
+          if (id === seq.current) apply(() => saved);
+          return true;
+        } catch (err) {
+          apply((p) => (p ? revertKeys(p, previous, changes) : p));
+          failure(err);
+          return false;
+        }
+      });
+      chain.current = run;
+      return run;
+    },
+    [apply, url],
+  );
+
+  return { value, init, patch };
+}
+
 /** Section « Notifications » : alertes en temps réel et bilans, enregistrés au fil des changements. */
 export function NotificationsSettings() {
-  const [alerts, setAlerts] = useState<AlertPrefs | null>(null);
-  const [digests, setDigests] = useState<DigestPrefs | null>(null);
+  const alertsPrefs = usePrefs<AlertPrefs>("/api/settings/alerts");
+  const digestsPrefs = usePrefs<DigestPrefs>("/api/settings/digests");
+  const { init: initAlerts, patch: patchAlerts } = alertsPrefs;
+  const { init: initDigests, patch: patchDigests } = digestsPrefs;
+  const alerts = alertsPrefs.value;
+  const digests = digestsPrefs.value;
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -133,40 +181,14 @@ export function NotificationsSettings() {
         if (!a.ok || !d.ok) throw new Error();
         const [alertsBody, digestsBody] = (await Promise.all([a.json(), d.json()])) as [AlertPrefs, DigestPrefs];
         if (controller.signal.aborted) return;
-        setAlerts(alertsBody);
-        setDigests(digestsBody);
+        initAlerts(alertsBody);
+        initDigests(digestsBody);
       } catch {
         if (!controller.signal.aborted) setLoadFailed(true);
       }
     })();
     return () => controller.abort();
-  }, []);
-
-  async function patchAlerts(patch: Partial<AlertPrefs>): Promise<boolean> {
-    const previous = alerts;
-    setAlerts((p) => (p ? { ...p, ...patch } : p));
-    try {
-      setAlerts(await save<AlertPrefs>("/api/settings/alerts", patch));
-      return true;
-    } catch (err) {
-      setAlerts(previous);
-      failure(err);
-      return false;
-    }
-  }
-
-  async function patchDigests(patch: Partial<DigestPrefs>): Promise<boolean> {
-    const previous = digests;
-    setDigests((p) => (p ? { ...p, ...patch } : p));
-    try {
-      setDigests(await save<DigestPrefs>("/api/settings/digests", patch));
-      return true;
-    } catch (err) {
-      setDigests(previous);
-      failure(err);
-      return false;
-    }
-  }
+  }, [initAlerts, initDigests]);
 
   const ready = alerts !== null && digests !== null;
   const subDisabled = alerts !== null && !alerts.enabled;

@@ -43,3 +43,10 @@ export function numberToInput(n: number): string {
 export function botDeepLink(botUsername: string, code: string): string {
   return `https://t.me/${botUsername}?start=${code}`;
 }
+
+/** Rétablit dans `state` uniquement les clés de `patch`, avec leurs valeurs de `previous` (échec d'un enregistrement). */
+export function revertKeys<T extends object>(state: T, previous: T, patch: Partial<T>): T {
+  const next = { ...state };
+  for (const key of Object.keys(patch) as (keyof T)[]) next[key] = previous[key];
+  return next;
+}

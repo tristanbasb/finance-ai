@@ -139,14 +139,14 @@ export function TelegramSettings() {
 
   const showingCode = code !== null && status?.linked === false;
 
-  // Compte à rebours.
+  const expired = code !== null && code.expiresAt - now <= 0;
+
+  // Compte à rebours, arrêté une fois le code expiré.
   useEffect(() => {
-    if (!showingCode) return;
+    if (!showingCode || expired) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [showingCode, code?.code]);
-
-  const expired = code !== null && code.expiresAt - now <= 0;
+  }, [showingCode, expired, code?.code]);
 
   // Surveille la liaison tant qu'un code valable est affiché.
   useEffect(() => {
