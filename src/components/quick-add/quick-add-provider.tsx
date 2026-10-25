@@ -58,14 +58,15 @@ async function loadData(): Promise<QuickAddData> {
   };
 }
 
+const LOAD_ERROR = "Impossible de charger les comptes et les catégories. Vérifiez la connexion.";
+
 /**
  * Saisie rapide accessible partout : `useQuickAdd().open()`, raccourci « N » (hors champ de
  * saisie et hors dialogue ouvert). Comptes, catégories et état de l'IA sont chargés à la
  * première ouverture, puis rechargés à l'ouverture suivant un ajout. Monte aussi l'assistant
- * d'import CSV, ouvert depuis le lien « Importer un relevé CSV » de la feuille.
+ * d'import CSV, ouvert par `openImport()` (lien « Importer un relevé CSV » de la feuille, bloc de
+ * démarrage de l'accueil).
  */
-const LOAD_ERROR = "Impossible de charger les comptes et les catégories. Vérifiez la connexion.";
-
 export function QuickAddProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [session, setSession] = useState<Session>({ nonce: 0, open: false });

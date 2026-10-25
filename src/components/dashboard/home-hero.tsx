@@ -70,8 +70,7 @@ export function HomeHero({ netWorth, cash, investments, points, className }: Hom
           <svg
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="none"
-            role="img"
-            aria-label={`Évolution du patrimoine net sur ${points.length} jours relevés`}
+            aria-hidden
             className="absolute inset-0 size-full overflow-visible"
           >
             <path d={curve.area} fill="white" fillOpacity={0.12} />

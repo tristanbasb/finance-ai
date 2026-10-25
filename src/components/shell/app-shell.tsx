@@ -17,12 +17,19 @@ import { MobileHeader } from "./mobile-header";
 import { Sidebar } from "./sidebar";
 import { useClaudeColumnCollapsed, useWideScreen } from "./use-claude-column";
 
-/** En-tête de la zone de contenu (≥ 768 px) : titre, réouverture de la colonne Claude, cloche. */
-function ContentHeader({ onExpand }: { onExpand: () => void }) {
+/**
+ * En-tête de la zone de contenu (≥ 768 px) : titre, réouverture de la colonne Claude, cloche. Sur
+ * l'accueil, la salutation est le titre de la page : l'en-tête n'en affiche pas de second.
+ */
+function ContentHeader({ onExpand, showTitle }: { onExpand: () => void; showTitle: boolean }) {
   return (
     <header className="sticky top-0 z-20 hidden bg-bg/85 backdrop-blur-md md:block">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-2 px-6 md:px-10">
-        <HeaderTitle className="mr-auto min-w-0 text-sm font-semibold text-muted" />
+        {showTitle ? (
+          <HeaderTitle className="mr-auto min-w-0 text-sm font-semibold text-muted" />
+        ) : (
+          <span aria-hidden className="mr-auto" />
+        )}
         <Button variant="secondary" size="sm" onClick={onExpand} className="claude-expand">
           <PanelRightOpen aria-hidden />
           Afficher Claude
@@ -78,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="pr-[var(--claude-column-width,0px)]">
         <MobileHeader />
-        <ContentHeader onExpand={expand} />
+        <ContentHeader onExpand={expand} showTitle={pathname !== "/"} />
         <main
           id="contenu"
           tabIndex={-1}

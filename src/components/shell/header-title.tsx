@@ -23,7 +23,9 @@ function useLocalHour(): number | null {
 /**
  * Titre de l'en-tête : salutation selon l'heure locale sur l'accueil, nom de la rubrique ailleurs.
  * Au chargement complet, un script en ligne pose la salutation avant l'affichage (le serveur ne
- * connaît pas l'heure du navigateur) ; React prend le relais ensuite.  : titre de page.
+ * connaît pas l'heure du navigateur) ; React prend le relais ensuite.
+ * `as` : balise du titre, `p` dans les en-têtes de l'application (défaut), `h1` comme titre de page
+ * (accueil).
  */
 export function HeaderTitle({ className, as: Tag = "p" }: { className?: string; as?: "p" | "h1" }) {
   const pathname = usePathname();

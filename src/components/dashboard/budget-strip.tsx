@@ -92,7 +92,7 @@ export function BudgetStrip({ budgets, className }: { budgets: BudgetLine[]; cla
           role="region"
           aria-label="Budgets du mois, défilement horizontal"
           tabIndex={0}
-          className="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] outline-none scroll-px-4 focus-visible:outline-2 focus-visible:outline-ring sm:-mx-6 sm:px-6 sm:scroll-px-6 md:mx-0 md:px-0 md:scroll-px-0"
+          className="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] scroll-px-4 sm:-mx-6 sm:px-6 sm:scroll-px-6 md:mx-0 md:px-0 md:scroll-px-0"
         >
           <ul className="flex snap-x snap-mandatory gap-3">
             {budgets.map((b) => (
