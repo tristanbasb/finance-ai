@@ -49,10 +49,25 @@ export const MAX_NOTE_LENGTH = 1000;
 
 type AccountLike = { id: number; type?: string; archived?: boolean };
 
-/** Compte par défaut : premier compte courant non archivé, sinon premier compte non archivé, sinon null. */
-export function defaultAccountId(accounts: readonly AccountLike[]): number | null {
+/**
+ * Compte par défaut : `preferred` s'il désigne un compte non archivé (ex. filtre de l'Activité),
+ * sinon premier compte courant non archivé, sinon premier compte non archivé, sinon null.
+ */
+export function defaultAccountId(accounts: readonly AccountLike[], preferred?: number | null): number | null {
   const open = accounts.filter((a) => !a.archived);
-  return (open.find((a) => a.type === "checking") ?? open[0])?.id ?? null;
+  return (open.find((a) => a.id === preferred) ?? open.find((a) => a.type === "checking") ?? open[0])?.id ?? null;
+}
+
+/**
+ * Première vue de la saisie rapide : la proposition si un montant est fourni, le formulaire si
+ * d'autres champs le sont, sinon la phrase (IA active) ou le formulaire. Un compte seul n'est
+ * qu'une valeur par défaut et ne court-circuite pas la phrase.
+ */
+export function initialQuickAddView(prefill: Partial<Proposal> | undefined, aiEnabled: boolean): "phrase" | "proposal" | "manual" {
+  if (prefill && typeof prefill.amountCents === "number") return "proposal";
+  const others = Object.entries(prefill ?? {}).some(([key, value]) => key !== "accountId" && value !== undefined);
+  if (others) return "manual";
+  return aiEnabled ? "phrase" : "manual";
 }
 
 function isRealDate(value: string): boolean {

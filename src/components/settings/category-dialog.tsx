@@ -136,7 +136,7 @@ export function CategoryDialog({ open, onClose, category, defaultKind = "expense
   const footer = confirmDelete ? (
     <>
       <p className="mr-auto self-center text-[13px] text-muted">
-        Les transactions de cette catégorie seront conservées, sans catégorie.
+        Les opérations de cette catégorie seront conservées, sans catégorie.
       </p>
       <Button variant="secondary" onClick={() => setConfirmDelete(false)} disabled={busy}>
         Annuler

@@ -24,7 +24,7 @@ const SEEN_THRESHOLDS = Array.from({ length: 101 }, (_, i) => i / 100);
 
 export const TOOL_LABELS: Record<string, string> = {
   get_overview: "Consultation de votre situation…",
-  search_transactions: "Consultation de vos transactions…",
+  search_transactions: "Consultation de vos opérations…",
   spending_by_category: "Analyse de vos dépenses par catégorie…",
   get_holdings: "Consultation de vos investissements…",
   get_goals: "Consultation de vos objectifs d'épargne…",

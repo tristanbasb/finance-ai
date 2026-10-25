@@ -38,7 +38,7 @@ export function CategoriesManager({ categories }: { categories: CategoryRow[] })
           Catégories
         </CardTitle>
         <CardDescription>
-          Classez vos transactions et fixez un budget mensuel par catégorie de dépenses.
+          Classez vos opérations et fixez un budget mensuel par catégorie de dépenses.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

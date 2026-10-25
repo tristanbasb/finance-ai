@@ -11,6 +11,7 @@ import { todayLocal } from "@/lib/dates";
 import { errorMessage } from "@/lib/http";
 import {
   defaultAccountId,
+  initialQuickAddView,
   proposalToFormValues,
   validateTransactionForm,
   type Proposal,
@@ -83,17 +84,16 @@ export function QuickAddSheet({
   const accounts = useMemo(() => (data?.accounts ?? []).filter((a) => !a.archived), [data]);
   const categories = data?.categories ?? [];
   const aiEnabled = !!data?.aiEnabled && !aiUnavailable;
-  const defaults = useMemo(() => ({ today: todayLocal(), accountId: defaultAccountId(accounts) }), [accounts]);
+  const preferredAccount = prefill?.accountId;
+  const defaults = useMemo(
+    () => ({ today: todayLocal(), accountId: defaultAccountId(accounts, preferredAccount) }),
+    [accounts, preferredAccount],
+  );
 
   // Valeurs et vue initiales dérivées des données tant que l'utilisateur n'a rien changé.
-  const currentValues = values ?? proposalToFormValues(prefill ?? {}, defaults);
-  const initialView: View = prefill
-    ? typeof prefill.amountCents === "number"
-      ? "proposal"
-      : "manual"
-    : data?.aiEnabled
-      ? "phrase"
-      : "manual";
+  // Le compte prérempli passe par `defaults` (écarté s'il est archivé).
+  const currentValues = values ?? proposalToFormValues({ ...prefill, accountId: undefined }, defaults);
+  const initialView: View = initialQuickAddView(prefill, !!data?.aiEnabled);
   const currentView = view ?? initialView;
 
   // Analyse abandonnée si la feuille se ferme ou est démontée.

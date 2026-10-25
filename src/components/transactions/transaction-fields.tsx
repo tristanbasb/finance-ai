@@ -61,7 +61,7 @@ export function KindToggle({
   return (
     <div
       role="radiogroup"
-      aria-label="Type de transaction"
+      aria-label="Type d'opération"
       onKeyDown={onKeyDown}
       className={cn("grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1", className)}
     >

@@ -127,7 +127,7 @@ export function AiInsightsCard({ month, monthLabel }: { month: string; monthLabe
         {state.kind === "ready" &&
           (state.insights.length === 0 ? (
             <p className="text-[13px] leading-relaxed text-muted">
-              Pas encore assez de transactions ce mois-ci pour une analyse.
+              Pas encore assez d&apos;opérations ce mois-ci pour une analyse.
             </p>
           ) : (
             <ul className={cn("space-y-3 transition-opacity", state.refreshing && "opacity-50")}>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultAccountId,
+  initialQuickAddView,
   isQuickAddShortcut,
   isTypingTarget,
   proposalToFormValues,
@@ -223,5 +224,34 @@ describe("isTypingTarget / isQuickAddShortcut", () => {
     expect(isQuickAddShortcut({ ...key, repeat: true })).toBe(false);
     expect(isQuickAddShortcut({ ...key, key: "m" })).toBe(false);
     expect(isQuickAddShortcut({ ...key, target: { tagName: "INPUT" } })).toBe(false);
+  });
+});
+
+describe("compte présélectionné (filtre de l'Activité)", () => {
+  const accounts = [
+    { id: 1, type: "checking" },
+    { id: 2, type: "savings" },
+    { id: 3, type: "savings", archived: true },
+  ];
+  it("retient le compte demandé s'il est ouvert, sinon le compte par défaut", () => {
+    expect(defaultAccountId(accounts, 2)).toBe(2);
+    expect(defaultAccountId(accounts, 3)).toBe(1);
+    expect(defaultAccountId(accounts, 99)).toBe(1);
+    expect(defaultAccountId(accounts, null)).toBe(1);
+  });
+});
+
+describe("initialQuickAddView", () => {
+  it("sans préremplissage : la phrase si l'IA est active, sinon le formulaire", () => {
+    expect(initialQuickAddView(undefined, true)).toBe("phrase");
+    expect(initialQuickAddView(undefined, false)).toBe("manual");
+  });
+  it("un compte seul garde la phrase : il ne sert que de valeur par défaut", () => {
+    expect(initialQuickAddView({ accountId: 2 }, true)).toBe("phrase");
+    expect(initialQuickAddView({ accountId: 2 }, false)).toBe("manual");
+  });
+  it("avec un montant : la proposition ; d'autres champs sans montant : le formulaire", () => {
+    expect(initialQuickAddView({ amountCents: 1250, accountId: 2 }, true)).toBe("proposal");
+    expect(initialQuickAddView({ label: "Café" }, true)).toBe("manual");
   });
 });

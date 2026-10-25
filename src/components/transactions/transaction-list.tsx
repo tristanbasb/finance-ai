@@ -66,8 +66,9 @@ export function TransactionList({
   const [dialog, setDialog] = useState<DialogState>({ nonce: 0, open: false, transaction: null });
   const [importState, setImportState] = useState({ nonce: 0, open: false });
 
-  // Ajout : la saisie rapide globale (même feuille que le raccourci « N »).
-  const { open: openAdd } = useQuickAdd();
+  // Ajout : la saisie rapide globale (même feuille que le raccourci « N »), compte filtré présélectionné.
+  const { open: openQuickAdd } = useQuickAdd();
+  const openAdd = () => openQuickAdd(filters.accountId === null ? undefined : { accountId: filters.accountId });
   const openEdit = (transaction: TransactionRow) =>
     setDialog((d) => ({ nonce: d.nonce + 1, open: true, transaction }));
   const closeDialog = () => setDialog((d) => ({ ...d, open: false }));
@@ -104,7 +105,7 @@ export function TransactionList({
               Importer un relevé
             </Button>
             {/* Sur téléphone, l'ajout passe par le « + » global. */}
-            <Button variant="secondary" onClick={() => openAdd()} aria-keyshortcuts="N" className="max-md:hidden">
+            <Button variant="secondary" onClick={openAdd} aria-keyshortcuts="N" className="max-md:hidden">
               <Plus aria-hidden />
               Ajouter
             </Button>
@@ -124,7 +125,7 @@ export function TransactionList({
         hasFilter ? (
           <EmptyState
             icon={SearchX}
-            title="Aucune transaction ne correspond"
+            title="Aucune opération ne correspond"
             description="Modifiez la recherche, le compte ou la catégorie, ou changez de mois."
             action={
               <Link
@@ -140,11 +141,11 @@ export function TransactionList({
         ) : (
           <EmptyState
             icon={ReceiptText}
-            title="Aucune transaction pour ce mois"
+            title="Aucune opération pour ce mois"
             description="Saisissez une opération ou importez un relevé bancaire au format CSV."
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => openAdd()}>
+                <Button onClick={openAdd}>
                   <Plus aria-hidden />
                   Ajouter une opération
                 </Button>
@@ -208,16 +209,17 @@ export function TransactionList({
         </div>
       )}
 
-      <TransactionDialog
-        key={`tx-${dialog.nonce}`}
-        open={dialog.open}
-        onClose={closeDialog}
-        accounts={accounts}
-        categories={categories}
-        transaction={dialog.transaction}
-        today={today}
-        defaultAccountId={filters.accountId ?? undefined}
-      />
+      {dialog.transaction && (
+        <TransactionDialog
+          key={`tx-${dialog.nonce}`}
+          open={dialog.open}
+          onClose={closeDialog}
+          accounts={accounts}
+          categories={categories}
+          transaction={dialog.transaction}
+          today={today}
+        />
+      )}
       <ImportWizard
         key={`import-${importState.nonce}`}
         open={importState.open}

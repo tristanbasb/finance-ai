@@ -179,7 +179,7 @@ export async function getInsights(
   const { start, end } = monthRange(month);
   if (countTransactions(db, start, end) === 0) {
     return [
-      `Aucune transaction enregistrée pour ${formatMonth(month)} : importez un relevé ou ajoutez vos opérations pour obtenir une analyse.`,
+      `Aucune opération enregistrée pour ${formatMonth(month)} : importez un relevé ou ajoutez vos opérations pour obtenir une analyse.`,
     ];
   }
   if (!refresh) {

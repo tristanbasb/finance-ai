@@ -222,7 +222,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
       });
     } catch {
       toast.error("Catégorisation IA indisponible", {
-        description: "Les transactions seront importées sans catégorie.",
+        description: "Les opérations seront importées sans catégorie.",
       });
     } finally {
       setAiBusy(false);
@@ -254,13 +254,13 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
       );
       setImportedCount(imported);
       if (error === undefined) {
-        toast.success(`${imported} ${imported > 1 ? "transactions importées" : "transaction importée"}`);
+        toast.success(`${imported} ${imported > 1 ? "opérations importées" : "opération importée"}`);
         onClose();
         router.refresh();
         return;
       }
       const reason = error instanceof Error ? error.message : "Le serveur est injoignable.";
-      toast.error(imported > 0 ? `Import interrompu après ${imported} transactions` : "Import impossible", {
+      toast.error(imported > 0 ? `Import interrompu après ${imported} opérations` : "Import impossible", {
         description:
           imported > 0
             ? `${reason} Ces ${imported} transactions sont enregistrées : utilisez « Reprendre l'import » pour envoyer le reste.`
@@ -298,7 +298,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
           ? "Importer"
           : importedCount > 0
             ? `Reprendre l'import (${remaining} ${remaining > 1 ? "restantes" : "restante"})`
-            : `Importer ${valid.length} ${valid.length > 1 ? "transactions" : "transaction"}`}
+            : `Importer ${valid.length} ${valid.length > 1 ? "opérations" : "opération"}`}
       </Button>
     </>
   ) : (
@@ -358,7 +358,7 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
             >
               <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
               <span>
-                <strong className="font-semibold">{importedCount}</strong> sur {valid.length} transactions déjà
+                <strong className="font-semibold">{importedCount}</strong> sur {valid.length} opérations déjà
                 importées. Reprenez l&apos;import pour envoyer les {remaining} restantes, sans doublon.
               </span>
             </p>

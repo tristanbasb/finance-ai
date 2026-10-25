@@ -22,16 +22,14 @@ export type TransactionDialogProps = {
   onClose: () => void;
   accounts: AccountOption[];
   categories: CategoryOption[];
-  /** Transaction à modifier ; absente = ajout. */
-  transaction?: TransactionRow | null;
+  /** Opération à modifier (l'ajout passe par la saisie rapide globale). */
+  transaction: TransactionRow;
   /** Date du jour (YYYY-MM-DD) fournie par le serveur, pour éviter tout écart d'hydratation. */
   today: string;
-  /** Compte présélectionné à l'ajout (filtre actif). */
-  defaultAccountId?: number;
 };
 
 /**
- * Feuille d'ajout / modification. Le contenu garde son état tant que le composant reste monté :
+ * Feuille de modification d'une opération. Le contenu garde son état tant que le composant reste monté :
  * le parent change la `key` à chaque ouverture pour repartir d'un formulaire neuf.
  */
 export function TransactionDialog({
@@ -41,37 +39,29 @@ export function TransactionDialog({
   categories,
   transaction,
   today,
-  defaultAccountId,
 }: TransactionDialogProps) {
   const router = useRouter();
   const formId = useId();
-  const editing = !!transaction;
 
   const selectableAccounts = useMemo(
-    () => accounts.filter((a) => !a.archived || a.id === transaction?.accountId),
-    [accounts, transaction?.accountId],
+    () => accounts.filter((a) => !a.archived || a.id === transaction.accountId),
+    [accounts, transaction.accountId],
   );
 
-  const [values, setValues] = useState<TransactionFormValues>(() => {
-    if (transaction) {
-      return {
-        ...proposalToFormValues(
-          {
-            amountCents: transaction.amount,
-            kind: transaction.amount > 0 ? "income" : "expense",
-            categoryId: transaction.categoryId,
-            label: transaction.label,
-            date: transaction.date,
-            accountId: transaction.accountId,
-          },
-          { today, accountId: null },
-        ),
-        note: transaction.note ?? "",
-      };
-    }
-    const preferred = selectableAccounts.find((a) => a.id === defaultAccountId) ?? selectableAccounts[0];
-    return proposalToFormValues({}, { today, accountId: preferred?.id ?? null });
-  });
+  const [values, setValues] = useState<TransactionFormValues>(() => ({
+    ...proposalToFormValues(
+      {
+        amountCents: transaction.amount,
+        kind: transaction.amount > 0 ? "income" : "expense",
+        categoryId: transaction.categoryId,
+        label: transaction.label,
+        date: transaction.date,
+        accountId: transaction.accountId,
+      },
+      { today, accountId: null },
+    ),
+    note: transaction.note ?? "",
+  }));
   const [errors, setErrors] = useState<TransactionFormErrors>({});
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -92,8 +82,8 @@ export function TransactionDialog({
     if (!result.ok) return;
     setSaving(true);
     try {
-      const res = await fetch(editing ? `/api/transactions/${transaction.id}` : "/api/transactions", {
-        method: editing ? "PATCH" : "POST",
+      const res = await fetch(`/api/transactions/${transaction.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result.body),
       });
@@ -103,7 +93,7 @@ export function TransactionDialog({
         });
         return;
       }
-      toast.success(editing ? "Transaction modifiée" : "Transaction ajoutée");
+      toast.success("Opération modifiée");
       onClose();
       router.refresh();
     } catch {
@@ -116,7 +106,6 @@ export function TransactionDialog({
   }
 
   async function remove() {
-    if (!transaction) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/transactions/${transaction.id}`, {
@@ -128,7 +117,7 @@ export function TransactionDialog({
         });
         return;
       }
-      toast.success("Transaction supprimée");
+      toast.success("Opération supprimée");
       onClose();
       router.refresh();
     } catch {
@@ -145,7 +134,7 @@ export function TransactionDialog({
 
   const footer = confirmDelete ? (
     <>
-      <p className="mr-auto self-center text-[13px] text-muted max-md:order-last max-md:mr-0 max-md:text-center">Supprimer définitivement cette transaction ?</p>
+      <p className="mr-auto self-center text-[13px] text-muted max-md:order-last max-md:mr-0 max-md:text-center">Supprimer définitivement cette opération ?</p>
       <Button variant="secondary" onClick={() => setConfirmDelete(false)} disabled={busy}>
         Annuler
       </Button>
@@ -155,21 +144,19 @@ export function TransactionDialog({
     </>
   ) : (
     <>
-      {editing && (
-        <Button
-          variant="ghost"
-          className="text-danger! hover:text-danger! md:mr-auto"
-          onClick={() => setConfirmDelete(true)}
-          disabled={busy}
-        >
-          Supprimer
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        className="text-danger! hover:text-danger! md:mr-auto"
+        onClick={() => setConfirmDelete(true)}
+        disabled={busy}
+      >
+        Supprimer
+      </Button>
       <Button variant="secondary" onClick={onClose} disabled={busy}>
         Annuler
       </Button>
       <Button type="submit" form={formId} loading={saving}>
-        {editing ? "Enregistrer" : "Ajouter"}
+        Enregistrer
       </Button>
     </>
   );
@@ -178,7 +165,7 @@ export function TransactionDialog({
     <Sheet
       open={open}
       onClose={onClose}
-      title={editing ? "Modifier la transaction" : "Nouvelle transaction"}
+      title="Modifier l'opération"
       footer={footer}
     >
       <form id={formId} onSubmit={submit} noValidate>
