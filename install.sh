@@ -7,6 +7,7 @@
 # Variables optionnelles (installation non interactive) :
 #   FINANCE_AI_PASSWORD   mot de passe de connexion (8 caractères minimum)
 #   ANTHROPIC_API_KEY     clé API Claude (définie mais vide = pas d'IA)
+#   TELEGRAM_BOT_TOKEN    jeton du bot Telegram (facultatif ; jamais demandé en mode non interactif)
 #   CLAUDE_MODEL          modèle Claude (défaut claude-opus-5-5)
 #   APP_PORT              port HTTP publié (défaut 3000)
 #   FINANCE_AI_YES=1      aucune question : « oui » aux confirmations (ex. installation de Docker),
@@ -159,12 +160,15 @@ valid_port() {
 create_env() {
   if [ -f .env ]; then
     ok "Fichier .env existant conservé (non modifié)."
+    if [ -z "$(env_get TELEGRAM_BOT_TOKEN)" ]; then
+      info "Telegram : pour recevoir les alertes, ajoutez TELEGRAM_BOT_TOKEN=<jeton> dans .env puis lancez ./update.sh --force."
+    fi
     return 0
   fi
   [ -f .env.example ] || die ".env.example introuvable : dépôt incomplet ?"
   info "Configuration (.env)"
 
-  local password hash secret api_key model port
+  local password hash secret api_key telegram_token model port
   password="$(read_new_password)"
   info "Calcul du hash du mot de passe…"
   hash="$(hash_password "$password")"
@@ -185,6 +189,16 @@ create_env() {
   api_key="$(printf '%s' "$api_key" | tr -d '[:space:]')"
   [ -n "$api_key" ] || info "Pas de clé API : les fonctions IA resteront désactivées (ajoutez-la plus tard dans .env)."
 
+  # Bot Telegram (facultatif) : jeton de @BotFather, saisie masquée, jamais affiché.
+  if [ -n "${TELEGRAM_BOT_TOKEN+x}" ]; then
+    telegram_token="$TELEGRAM_BOT_TOKEN"
+  elif non_interactive; then
+    telegram_token=""
+  else
+    telegram_token="$(ask_secret "Token du bot Telegram (facultatif, Entrée pour passer)")"
+  fi
+  telegram_token="$(printf '%s' "$telegram_token" | tr -d '[:space:]')"
+
   model="${CLAUDE_MODEL:-}"
   [ -n "$model" ] || model="$(ask "Modèle Claude" "$DEFAULT_MODEL")"
 
@@ -201,6 +215,7 @@ create_env() {
   FAI_SET_APP_PASSWORD_HASH="$hash" \
     FAI_SET_SESSION_SECRET="$secret" \
     FAI_SET_ANTHROPIC_API_KEY="$api_key" \
+    FAI_SET_TELEGRAM_BOT_TOKEN="$telegram_token" \
     FAI_SET_CLAUDE_MODEL="$model" \
     FAI_SET_APP_PORT="$port" \
     FAI_SET_COOKIE_SECURE="auto" \
@@ -255,6 +270,11 @@ print_summary() {
   printf '   Prochaines étapes :\n'
   printf '   • HTTPS : placez un reverse proxy devant l'"'"'application (exemple Caddy dans le README).\n'
   printf '   • Mise à jour : cd %s && ./update.sh\n' "$script_dir"
+  if [ -n "$(env_get TELEGRAM_BOT_TOKEN)" ]; then
+    printf '   • Telegram : bot configuré. Reliez votre compte dans Réglages → Telegram.\n'
+  else
+    printf '   • Telegram : non configuré (facultatif) — ajoutez TELEGRAM_BOT_TOKEN dans .env, voir le README.\n'
+  fi
   printf '   • Mot de passe : ./scripts/set-password.sh\n'
   printf '   • Journaux : docker compose logs -f app\n'
   if [ "$ADDED_TO_DOCKER_GROUP" = "1" ]; then
