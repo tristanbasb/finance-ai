@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { readJson } from "@/lib/api";
 import { getDb } from "@/lib/db";
-import { requireAi } from "@/lib/ai/client";
+import { isAbortError, requireAi } from "@/lib/ai/client";
 import { defaultAccountId, NoAmountError, parseTransaction } from "@/lib/ai/parse-transaction";
 import { withAiErrors } from "@/lib/ai/route";
 import { todayLocal } from "@/lib/dates";
@@ -42,6 +42,11 @@ export const POST = withAiErrors(async (req: Request) => {
         { error: err.message, partial: { ...err.partial, accountId: err.partial.accountId ?? fallback } },
         { status: 422 },
       );
+    }
+    if (isAbortError(err)) {
+      // Client parti : réponse silencieuse ; sinon le délai de 30 s est écoulé.
+      if (req.signal.aborted) return Response.json({ error: "Requête annulée" }, { status: 400 });
+      return Response.json({ error: "L'analyse a pris trop de temps, réessayez." }, { status: 504 });
     }
     throw err;
   }

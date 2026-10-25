@@ -51,7 +51,7 @@ describe("normalizeProposal", () => {
   });
 
   it("0, NaN ou absent -> NoAmountError avec partial", () => {
-    for (const amountCents of [0, Number.NaN, null, undefined, 0.2]) {
+    for (const amountCents of [0, Number.NaN, null, undefined, 0.2, 10_000_000_001, 1e300, Infinity]) {
       let err: unknown;
       try {
         normalizeProposal({ ...valid, amountCents }, ctx);
@@ -173,6 +173,32 @@ describe("POST /api/ai/parse-transaction", () => {
       const body = await res.json();
       expect(body).toMatchObject({ amountCents: 1250, kind: "expense", categoryId: null, date: "2026-10-20" });
       expect(typeof body.accountId).toBe("number");
+    });
+
+    it("délai dépassé -> 504 sans journal d'erreur ; requête annulée -> 400 silencieux", async () => {
+      const spy = vi
+        .spyOn(Anthropic.Messages.prototype, "parse")
+        .mockRejectedValue(new Anthropic.APIUserAbortError());
+      const errLog = vi.mocked(console.error);
+      errLog.mockClear();
+      const timeout = await post({ text: "12 euros" });
+      expect(timeout.status).toBe(504);
+      expect(await timeout.json()).toEqual({ error: "L'analyse a pris trop de temps, réessayez." });
+
+      const ac = new AbortController();
+      ac.abort();
+      const res = await POST(
+        new Request("http://localhost/api/ai/parse-transaction", {
+          method: "POST",
+          headers: json,
+          body: JSON.stringify({ text: "12 euros" }),
+          signal: ac.signal,
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Requête annulée" });
+      expect(errLog).not.toHaveBeenCalled();
+      spy.mockRestore();
     });
 
     it("422 sans montant, avec partial", async () => {
