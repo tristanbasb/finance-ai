@@ -12,7 +12,9 @@ RUN npm ci --no-audit --no-fund --ignore-scripts
 # ---- Build Next.js (sortie standalone) ----
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1
+# Types déjà vérifiés par la CI (npm run typecheck) : on évite ≈ 3 min sur un petit VPS.
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    FINANCE_AI_SKIP_TYPECHECK=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

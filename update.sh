@@ -106,7 +106,7 @@ main() {
     git --no-pager log --oneline "$deployed..HEAD" 2>/dev/null | head -n 20 || true
   fi
 
-  info "Reconstruction de l'image…"
+  info "Reconstruction de l'image (quelques minutes sur un petit serveur, rien n'est bloqué)…"
   compose build || fail_build
   info "Redémarrage de l'application…"
   compose up -d || fail_start "docker compose up a échoué."
