@@ -1,9 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ChartColumn, ChevronUp, CircleAlert, LoaderCircle, RotateCcw, Send, Sparkles, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  ChartColumn,
+  ChevronUp,
+  CircleAlert,
+  LoaderCircle,
+  PencilLine,
+  RotateCcw,
+  Send,
+  Sparkles,
+  TriangleAlert,
+  Undo2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/assistant/markdown";
+import { ActionCards } from "@/components/assistant/action-card";
+import {
+  actionIdBatches,
+  actionsUrl,
+  messageActionIds,
+  threadActionIds,
+  undoneActionId,
+  type ActionView,
+} from "@/lib/ai-actions-ui";
+import { isWriteTool } from "@/lib/ai/write-tool-names";
 import {
   fullDateTime,
   isProactive,
@@ -30,7 +51,10 @@ export const TOOL_LABELS: Record<string, string> = {
   get_goals: "Consultation de vos objectifs d'épargne…",
 };
 
+export const WRITE_TOOL_LABEL = "Modification de vos données…";
+
 export function toolLabel(name: string): string {
+  if (isWriteTool(name)) return WRITE_TOOL_LABEL;
   return TOOL_LABELS[name] ?? "Consultation de vos données…";
 }
 
@@ -123,6 +147,80 @@ export function useThread(): ThreadState {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Actions de Claude (cartes sous ses réponses)
+
+export type ActionsState = {
+  views: Map<number, ActionView>;
+  status: "loading" | "ready" | "error";
+  /** Après une annulation depuis une carte : relit la fin du fil, puis les statuts. */
+  onChanged: () => void;
+  reload: () => void;
+};
+
+async function fetchActions(ids: number[], signal: AbortSignal): Promise<ActionView[]> {
+  const pages = await Promise.all(
+    actionIdBatches(ids).map(async (batch) => {
+      const res = await fetch(actionsUrl(batch), { cache: "no-store", signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as { actions?: unknown };
+      return Array.isArray(body.actions) ? (body.actions as ActionView[]) : [];
+    }),
+  );
+  return pages.flat();
+}
+
+/**
+ * Statuts des actions de tous les messages affichés : une lecture groupée (`GET /api/ai/actions`)
+ * quand de nouvelles actions apparaissent, quand une note « Action annulée » arrive dans le fil
+ * (annulation depuis Telegram par exemple) et après une annulation depuis une carte.
+ */
+function useActionViews(messages: ThreadMessage[], refreshTail: ThreadState["refreshTail"]): ActionsState {
+  const ids = useMemo(() => threadActionIds(messages), [messages]);
+  const undoneKey = useMemo(
+    () =>
+      messages
+        .map(undoneActionId)
+        .filter((id) => id !== null)
+        .join(","),
+    [messages],
+  );
+  const [nonce, setNonce] = useState(0);
+  const key = ids.length ? `${ids.join(",")}|${undoneKey}|${nonce}` : "";
+  const [result, setResult] = useState<{ key: string; views: Map<number, ActionView>; error: boolean }>({
+    key: "",
+    views: new Map(),
+    error: false,
+  });
+  const idsRef = useRef(ids);
+  useEffect(() => {
+    idsRef.current = ids;
+  }, [ids]);
+
+  useEffect(() => {
+    if (!key) return;
+    const controller = new AbortController();
+    fetchActions(idsRef.current, controller.signal).then(
+      (list) => setResult({ key, views: new Map(list.map((a) => [a.id, a])), error: false }),
+      () => {
+        if (!controller.signal.aborted) setResult((r) => ({ key, views: r.views, error: true }));
+      },
+    );
+    return () => controller.abort();
+  }, [key]);
+
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  const onChanged = useCallback(() => {
+    void refreshTail().then((fresh) => {
+      // La note « Action annulée » arrivée change déjà la clé : pas de seconde lecture.
+      if (!fresh?.some((m) => undoneActionId(m) !== null)) reload();
+    });
+  }, [refreshTail, reload]);
+
+  const status = result.key === key ? (result.error ? "error" : "ready") : "loading";
+  return { views: result.views, status, onChanged, reload };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Présentation
 
 const kindStyles: Record<"alert" | "weekly" | "monthly", { icon: typeof TriangleAlert; chip: string; rule: string }> = {
@@ -195,7 +293,7 @@ function Meta({ children, align = "left" }: { children: ReactNode; align?: "left
 const itemBase =
   "scroll-mt-4 rounded-2xl transition-[box-shadow,background-color] duration-500 data-[highlight=true]:ring-2 data-[highlight=true]:ring-accent/50 data-[highlight=true]:ring-offset-4 data-[highlight=true]:ring-offset-surface";
 
-function MessageItem({ message, now }: { message: ThreadMessage; now: number }) {
+function MessageItem({ message, now, actions }: { message: ThreadMessage; now: number; actions: ActionsState }) {
   const unread = message.role === "assistant" && message.readAt === null;
   const common = {
     "data-message-id": message.id,
@@ -210,6 +308,24 @@ function MessageItem({ message, now }: { message: ThreadMessage; now: number }) 
         <span aria-hidden>·</span>
         <Time ts={message.createdAt} now={now} />
         <span aria-hidden className="h-px flex-1 bg-border" />
+      </li>
+    );
+  }
+
+  // Note système « Action annulée : … » : ligne discrète, pas une bulle de Claude.
+  if (undoneActionId(message) !== null) {
+    return (
+      <li {...common} className={cn(itemBase, "flex justify-center")}>
+        <p className="flex max-w-[90%] items-start gap-2 rounded-2xl bg-surface-2 px-3 py-1.5 text-[12px] leading-snug text-muted">
+          <Undo2 aria-hidden className="mt-px size-3.5 shrink-0 text-accent" />
+          <span className="min-w-0 break-words">
+            {message.content}{" "}
+            <span className="whitespace-nowrap text-subtle">
+              <span aria-hidden>· </span>
+              <Time ts={message.createdAt} now={now} />
+            </span>
+          </span>
+        </p>
       </li>
     );
   }
@@ -261,14 +377,25 @@ function MessageItem({ message, now }: { message: ThreadMessage; now: number }) 
     );
   }
 
+  const actionIds = messageActionIds(message);
   return (
     <li {...common} className={cn(itemBase, "flex items-start gap-3")}>
       <KindIcon kind="chat" className="mt-0.5" />
-      <div className="min-w-0 max-w-[85%]">
+      <div className={cn("min-w-0 max-w-[85%]", actionIds.length > 0 && "w-full")}>
         <div className="break-words rounded-2xl rounded-tl-md bg-surface-2 px-4 py-3 text-sm leading-relaxed text-fg">
           <span className="sr-only">Claude : </span>
           <Markdown text={message.content} />
         </div>
+        {actionIds.length > 0 && (
+          <ActionCards
+            ids={actionIds}
+            views={actions.views}
+            status={actions.status}
+            now={now}
+            onChanged={actions.onChanged}
+            onRetry={actions.reload}
+          />
+        )}
         <Meta>
           {message.source === "telegram" && <TelegramTag />}
           <Time ts={message.createdAt} now={now} />
@@ -302,7 +429,14 @@ function StreamingBubble({ text, tool }: { text: string; tool: string | null }) 
         )}
         {tool && (
           <p className="flex items-center gap-2 text-[13px] text-muted">
-            <LoaderCircle aria-hidden className="size-3.5 animate-spin text-accent" />
+            {isWriteTool(tool) ? (
+              <span aria-hidden className="relative inline-flex size-3.5 items-center justify-center text-warning">
+                <LoaderCircle className="absolute inset-0 size-3.5 animate-spin" />
+                <PencilLine className="size-2" />
+              </span>
+            ) : (
+              <LoaderCircle aria-hidden className="size-3.5 animate-spin text-accent" />
+            )}
             {toolLabel(tool)}
           </p>
         )}
@@ -350,6 +484,7 @@ export function ThreadView({
 }: ThreadViewProps) {
   const { messages, status, hasMore, loadingOlder, loadOlder, refreshTail } = thread;
   const now = useNow();
+  const actions = useActionViews(messages, refreshTail);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const anchor = useRef<{ height: number; top: number } | null>(null);
@@ -377,7 +512,8 @@ export function ThreadView({
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, pending, stream, failure, status]);
+    // Les cartes d'action arrivent après les messages : elles allongent aussi le fil.
+  }, [messages, pending, stream, failure, status, actions.views, actions.status]);
 
   useLayoutEffect(() => {
     stick.current = true;
@@ -496,7 +632,7 @@ export function ThreadView({
             )}
             <ol aria-label="Conversation avec Claude" className="space-y-5">
               {messages.map((m) => (
-                <MessageItem key={m.id} message={m} now={now} />
+                <MessageItem key={m.id} message={m} now={now} actions={actions} />
               ))}
               {pending && (
                 <li className="flex flex-col items-end">
@@ -545,8 +681,9 @@ function Welcome({ onPick }: { onPick?: (q: string) => void }) {
       <div className="max-w-sm space-y-1.5">
         <h2 className="text-[15px] font-semibold text-fg">Posez une question à Claude sur vos finances</h2>
         <p className="text-[13px] leading-relaxed text-muted">
-          Claude consulte vos comptes, transactions, budgets, investissements et objectifs, en lecture seule. Ses
-          alertes et bilans arrivent aussi ici.
+          Claude consulte vos comptes, transactions, budgets, investissements et objectifs. Il ne modifie vos
+          données qu&apos;à votre demande, et chaque modification s&apos;annule pendant 24 h. Ses alertes et
+          bilans arrivent aussi ici.
         </p>
       </div>
       {onPick && (

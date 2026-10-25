@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Maximize2, PanelRightClose, Sparkles, SquarePen, X } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import {
   unreadAssistantIds,
   type ThreadMessage,
 } from "@/lib/assistant-thread";
+import { messageActionIds, undoneActionId } from "@/lib/ai-actions-ui";
 import { errorMessage } from "@/lib/http";
 import { decodeSse } from "@/lib/sse";
 import { cn } from "@/lib/cn";
@@ -22,7 +24,7 @@ import { Composer } from "./composer";
 import { ModelSelect } from "./model-select";
 import { ThreadView, useThread, type PendingUser, type ThreadFailure } from "./thread";
 
-export { SUGGESTIONS, TOOL_LABELS, toolLabel } from "./thread";
+export { SUGGESTIONS, TOOL_LABELS, WRITE_TOOL_LABEL, toolLabel } from "./thread";
 
 /** Délai de regroupement des marquages « lu ». */
 const READ_BATCH_MS = 400;
@@ -47,6 +49,7 @@ export function AssistantConversation({
   titleId?: string;
 }) {
   const { aiEnabled, focusId, clearFocus, refreshUnread, unread, setOpen } = useAssistant();
+  const router = useRouter();
   const thread = useThread();
   const { refreshTail, upsert, messages } = thread;
 
@@ -61,13 +64,19 @@ export function AssistantConversation({
   const streamingRef = useRef(false);
   const streaming = stream !== null;
 
-  // Annonce (lecteurs d'écran) des nouveaux messages de Claude, une fois complets.
+  // Annonce (lecteurs d'écran) des nouveaux messages de Claude, une fois complets. Un nouveau
+  // message porteur de modifications (réponse avec actions, ou annulation venue d'ailleurs, de
+  // Telegram par exemple) rafraîchit la page affichée : ses données ont changé.
   const reloadTail = useCallback(async () => {
     const fresh = await refreshTail();
     const last = [...(fresh ?? [])].reverse().find((m) => m.role === "assistant");
-    if (last) setAnnouncement(`${kindLabel(last.kind)} : ${excerpt(last.content, 200)}`);
+    if (last) {
+      const note = undoneActionId(last) !== null;
+      setAnnouncement(note ? last.content : `${kindLabel(last.kind)} : ${excerpt(last.content, 200)}`);
+    }
+    if (fresh?.some((m) => messageActionIds(m).length > 0 || undoneActionId(m) !== null)) router.refresh();
     return fresh;
-  }, [refreshTail]);
+  }, [refreshTail, router]);
 
   // Pas de relevé périodique propre au fil : `useUnread` (cloche) interroge déjà le serveur toutes
   // les 20 s. Un non-lu plus récent que le fil affiché déclenche le rechargement de sa fin ; le

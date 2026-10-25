@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { AiWriteSettings } from "@/components/settings/ai-write-settings";
 import { ModelSettings } from "@/components/settings/model-settings";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +53,9 @@ export function AiStatus() {
       </CardHeader>
       <CardContent className="space-y-4">
         <ModelSettings />
+        <div className="border-t border-border pt-4">
+          <AiWriteSettings />
+        </div>
         <div aria-live="polite" aria-busy={state.kind === "loading"}>
         {state.kind === "loading" && (
           <div className="h-4 w-48 animate-pulse rounded-full bg-surface-2" aria-label="Vérification en cours" />
