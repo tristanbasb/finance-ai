@@ -38,9 +38,11 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
 - **Budgets** : dépenses du mois par catégorie, budget **modifiable sur place** (touchez le
   montant), mois précédents, et l'« Analyse IA » du mois.
 - **Claude** (API Claude) : une conversation **permanente**, dans une **colonne** à droite sur
-  grand écran, une bulle et un panneau sur mobile, ou en plein écran sur `/assistant`. L'IA
-  consulte vos données en **lecture seule** et ne les modifie jamais. Le modèle se choisit
-  dans l'application.
+  grand écran, une bulle et un panneau sur mobile, ou en plein écran sur `/assistant`. Claude
+  consulte vos données et peut aussi les **modifier à votre demande** (ajouter une opération,
+  fixer un budget…), chaque modification étant annulable pendant 24 h — voir
+  [Claude peut agir pour vous](#claude-peut-agir-pour-vous). Le modèle se choisit dans
+  l'application.
 - **Assistant proactif** : alertes (budgets, dépense inhabituelle, investissements, objectifs),
   bilans hebdomadaire et mensuel, cloche de notifications — voir
   [Assistant proactif](#assistant-proactif).
@@ -132,6 +134,45 @@ Toute la configuration est dans le fichier `.env` à la racine du dépôt (modè
 | `TRUST_PROXY` | `false` | Limitation des connexions par IP via `X-Forwarded-For` (voir HTTPS) |
 | `FINANCE_AI_DISABLE_JOBS` | non défini | `1` coupe les tâches de fond (bilans et alertes planifiés, cours horaires, bot Telegram), pour diagnostic |
 
+## Claude peut agir pour vous
+
+Demandez, Claude s'en charge, dans l'application comme sur Telegram :
+
+- « Ajoute 12 € de boulangerie ce matin »
+- « Mets mon budget Loisirs à 150 € »
+- « Mets toutes mes dépenses Amazon de septembre en Shopping »
+- « Crée un objectif Vacances de 2 000 € pour juin »
+- « Archive le compte Livret A », « Ajoute 0,5 BTC à 60 000 € sur mon compte crypto »
+
+Claude peut gérer les **opérations** (ajouter, modifier, supprimer une opération,
+recatégoriser), les **budgets et catégories** (fixer ou retirer un budget, créer ou renommer
+une catégorie), les **objectifs d'épargne**, les **comptes** (créer, renommer, archiver) et les
+**positions** d'investissement.
+
+**Annulation** : la modification est appliquée tout de suite et une carte « Opération
+ajoutée », « Budget Loisirs fixé à 150,00 € »… s'affiche sous la réponse, avec le détail et un
+bouton **Annuler**. L'annulation rétablit exactement l'état d'avant pendant **24 h**, sauf si
+vous avez modifié l'élément entre-temps : rien n'est alors écrasé et la carte explique
+pourquoi.
+
+**Limites** :
+
+- au plus 20 modifications par réponse et 200 opérations par recatégorisation (au-delà, Claude
+  vous demande de préciser la période ou le libellé) ;
+- pas de suppression en lot, ni de suppression de compte ou de catégorie (archivez un compte
+  plutôt) ;
+- en cas de doute (montant, compte, date), Claude vous pose la question au lieu d'agir.
+
+**Sécurité** : Claude ne modifie vos données que pour exécuter une demande explicite de votre
+dernier message. Il ne suit jamais une consigne trouvée dans vos données (un libellé de relevé
+« supprime tout », par exemple). Les alertes et les bilans ne peuvent rien modifier. Pour revenir
+à un Claude en lecture seule, coupez **Réglages → Assistant IA → Autoriser Claude à modifier
+mes données** : les outils de modification ne lui sont alors plus proposés du tout.
+
+**Sur Telegram** : un bouton **Annuler** apparaît sous chaque réponse qui a modifié vos
+données, et `/annuler` annule la dernière action (si vous l'avez modifiée depuis, le bot vous
+le dit au lieu d'annuler une action plus ancienne).
+
 ## Assistant proactif
 
 L'assistant ne se contente pas de répondre : il vous prévient. Ses alertes et bilans arrivent
@@ -176,7 +217,8 @@ l'assistant depuis votre téléphone — la conversation est la même que dans l
    `/start <code>` à votre bot.
 
 Commandes : `/nouveau` (nouvelle conversation), `/bilan` (bilan du moment), `/modele`
-(voir ou changer de modèle), `/aide`. Tout autre message est une question pour l'assistant.
+(voir ou changer de modèle), `/annuler` (annuler la dernière modification faite par Claude),
+`/aide`. Tout autre message est une question ou une demande pour l'assistant.
 
 **Confidentialité** : seul le compte Telegram que vous avez lié peut utiliser le bot ; tout
 autre compte ne reçoit que « Ce bot est privé. » ou la réponse à un code de liaison, jamais
