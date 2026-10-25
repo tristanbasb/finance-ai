@@ -13,14 +13,33 @@ type Quote = {
   regularMarketPrice?: number;
   currency?: string;
   regularMarketChangePercent?: number;
+  /** Heure de la dernière cotation de la séance (Date pour yahoo-finance2). */
+  regularMarketTime?: Date | number;
 };
 
-const FIELDS: ("symbol" | "regularMarketPrice" | "currency" | "regularMarketChangePercent")[] = [
+const FIELDS: ("symbol" | "regularMarketPrice" | "currency" | "regularMarketChangePercent" | "regularMarketTime")[] = [
   "symbol",
   "regularMarketPrice",
   "currency",
   "regularMarketChangePercent",
+  "regularMarketTime",
 ];
+
+/**
+ * Cotation Yahoo → `PriceQuote` (null sans cours). `changeAt` : heure de la séance dont vient
+ * la variation, qui reste celle de la dernière séance quand le marché est fermé.
+ */
+export function yahooQuote(q: Quote): PriceQuote | null {
+  if (typeof q.regularMarketPrice !== "number" || !q.currency) return null;
+  const changePct =
+    typeof q.regularMarketChangePercent === "number" && Number.isFinite(q.regularMarketChangePercent)
+      ? q.regularMarketChangePercent
+      : undefined;
+  const t = q.regularMarketTime;
+  // Un nombre est un horodatage Unix en secondes (réponse brute de l'API).
+  const at = t instanceof Date ? t.getTime() : typeof t === "number" ? t * 1000 : NaN;
+  return { price: q.regularMarketPrice, currency: q.currency, changePct, changeAt: Number.isFinite(at) ? at : undefined };
+}
 
 async function quoteMany(symbols: string[]): Promise<Quote[]> {
   return withTimeout(
@@ -36,13 +55,8 @@ export const yahooFetcher: PriceFetcher = async (symbols) => {
   const out = new Map<string, PriceQuote>();
   const collect = (quotes: Quote[]) => {
     for (const q of quotes) {
-      if (typeof q.regularMarketPrice === "number" && q.currency) {
-        const changePct =
-          typeof q.regularMarketChangePercent === "number" && Number.isFinite(q.regularMarketChangePercent)
-            ? q.regularMarketChangePercent
-            : undefined;
-        out.set(q.symbol, { price: q.regularMarketPrice, currency: q.currency, changePct });
-      }
+      const quote = yahooQuote(q);
+      if (quote) out.set(q.symbol, quote);
     }
   };
   try {

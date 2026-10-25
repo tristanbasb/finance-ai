@@ -84,6 +84,8 @@ export const prices = sqliteTable("prices", {
   currency: text("currency").notNull(),
   fetchedAt: integer("fetched_at").notNull(),
   changePct: real("change_pct"),
+  /** Heure de marché (ms) de la variation `changePct` (Yahoo `regularMarketTime`) ; null pour les cryptos. */
+  changeAt: integer("change_at"),
 });
 
 export const snapshots = sqliteTable("snapshots", {

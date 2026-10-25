@@ -79,6 +79,8 @@ export type PriceMoveInput = {
   /** Cours unitaire et valeur de la position, en centimes. */
   priceCents: number;
   valueCents: number;
+  /** Date locale de la séance de la variation (actions/ETF) ; défaut : `date` (jour du contrôle). */
+  date?: string;
 };
 
 const pctFormatter = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
@@ -89,7 +91,7 @@ export function priceMoveAlerts(input: { moves: PriceMoveInput[]; thresholdPct: 
     if (!Number.isFinite(m.changePct) || Math.abs(m.changePct) < input.thresholdPct) continue;
     const dir = m.changePct > 0 ? "up" : "down";
     out.push({
-      key: `price:${m.symbol}:${input.date}:${dir}`,
+      key: `price:${m.symbol}:${m.date ?? input.date}:${dir}`,
       type: "price",
       facts: {
         name: m.name,

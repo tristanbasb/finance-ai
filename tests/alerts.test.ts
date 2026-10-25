@@ -107,6 +107,10 @@ describe("priceMoveAlerts", () => {
   const run = (pct: number, threshold = 5) =>
     priceMoveAlerts({ moves: [move(pct)], thresholdPct: threshold, date: "2026-10-25" });
 
+  it("date de la séance propre à la variation, sinon date du jour", () => {
+    const [a] = priceMoveAlerts({ moves: [{ ...move(6), date: "2026-10-23" }], thresholdPct: 5, date: "2026-10-25" });
+    expect(a.key).toBe("price:AAPL:2026-10-23:up");
+  });
   it("hausse et baisse au-delà du seuil", () => {
     expect(run(5)[0]).toMatchObject({ key: "price:AAPL:2026-10-25:up", type: "price" });
     expect(run(-7.5)[0].key).toBe("price:AAPL:2026-10-25:down");
@@ -339,14 +343,69 @@ describe("runAlertChecks", () => {
     db.insert(holdings)
       .values({ accountId: acc.id, symbol: "AAPL", name: "Apple", assetType: "stock", quantity: 2, avgPrice: 5_000 })
       .run();
-    const stock: PriceFetcher = async () => new Map([["AAPL", { price: 200, currency: "EUR", changePct: 6.2 }]]);
+    const now = new Date(2026, 9, 26, 15);
+    const stock: PriceFetcher = async () =>
+      new Map([["AAPL", { price: 200, currency: "EUR", changePct: 6.2, changeAt: now.getTime() - 60_000 }]]);
     const none: PriceFetcher = async () => new Map();
-    await refreshPrices(db, { stock, crypto: none, fx: async () => 1 }, new Date(), true);
+    await refreshPrices(db, { stock, crypto: none, fx: async () => 1 }, now, true);
     expect(db.select().from(prices).where(eq(prices.symbol, "AAPL")).get()!.changePct).toBe(6.2);
-    await runAlertChecks(db, { prices: true }, { ai: null, today: "2026-10-25" });
+    await runAlertChecks(db, { prices: true }, { ai: null, now: now.getTime() });
     const log = db.select().from(alertLog).all();
     expect(log).toHaveLength(1);
-    expect(log[0].key).toMatch(/^price:AAPL:\d{4}-\d{2}-\d{2}:up$/);
+    expect(log[0].key).toBe("price:AAPL:2026-10-26:up");
+  });
+
+  describe("marché fermé (week-end, avant l'ouverture)", () => {
+    function setupHoldings(db: TestDb) {
+      const acc = account(db);
+      db.insert(holdings)
+        .values([
+          { accountId: acc.id, symbol: "AAPL", name: "Apple", assetType: "stock", quantity: 2, avgPrice: 5_000 },
+          { accountId: acc.id, symbol: "BTC", name: "Bitcoin", assetType: "crypto", quantity: 1, avgPrice: 5_000 },
+        ])
+        .run();
+    }
+    async function refreshAt(db: TestDb, now: Date, stock: { changePct: number; changeAt?: number } | null, crypto?: number) {
+      const s: PriceFetcher = async () => new Map(stock ? [["AAPL", { price: 200, currency: "EUR", ...stock }]] : []);
+      const c: PriceFetcher = async () =>
+        new Map(crypto === undefined ? [] : [["BTC", { price: 50_000, currency: "EUR", changePct: crypto }]]);
+      await refreshPrices(db, { stock: s, crypto: c, fx: async () => 1 }, now, true);
+      await runAlertChecks(db, { prices: true }, { ai: null, now: now.getTime() });
+    }
+    const priceKeys = (db: TestDb) =>
+      db
+        .select()
+        .from(alertLog)
+        .all()
+        .map((r) => r.key)
+        .filter((k) => k.startsWith("price:AAPL"))
+        .sort();
+
+    it("variation du vendredi revue samedi, dimanche et lundi avant l'ouverture → une seule alerte", async () => {
+      const db = freshDb();
+      setupHoldings(db);
+      const friday = new Date(2026, 9, 23, 17, 35).getTime();
+      await refreshAt(db, new Date(2026, 9, 23, 18), { changePct: 6.2, changeAt: friday });
+      await refreshAt(db, new Date(2026, 9, 24, 10), { changePct: 6.2, changeAt: friday });
+      await refreshAt(db, new Date(2026, 9, 25, 10), { changePct: 6.2, changeAt: friday });
+      await refreshAt(db, new Date(2026, 9, 26, 8), { changePct: 6.2, changeAt: friday });
+      expect(priceKeys(db)).toEqual(["price:AAPL:2026-10-23:up"]);
+      expect(allMessages(db)).toHaveLength(1);
+      // Nouvelle séance du lundi : nouvelle variation → nouvelle alerte.
+      await refreshAt(db, new Date(2026, 9, 26, 16), { changePct: 7, changeAt: new Date(2026, 9, 26, 15, 55).getTime() });
+      expect(priceKeys(db)).toEqual(["price:AAPL:2026-10-23:up", "price:AAPL:2026-10-26:up"]);
+      expect(allMessages(db)).toHaveLength(2);
+    });
+
+    it("séance de plus de 3 jours ou heure inconnue → pas d'alerte action ; crypto : date du jour", async () => {
+      const db = freshDb();
+      setupHoldings(db);
+      const old = new Date(2026, 9, 22, 17, 35).getTime(); // jeudi, 4 jours avant
+      await refreshAt(db, new Date(2026, 9, 26, 8), { changePct: 9, changeAt: old }, 8);
+      await refreshAt(db, new Date(2026, 9, 26, 9), { changePct: 9 }, 8);
+      expect(priceKeys(db)).toEqual([]);
+      expect(db.select().from(alertLog).all().map((r) => r.key)).toEqual(["price:BTC:2026-10-26:up"]);
+    });
   });
 
   it("IA en erreur → texte modèle publié", async () => {

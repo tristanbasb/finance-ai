@@ -306,3 +306,36 @@ describe("withTimeout", () => {
     expect(received).toBeInstanceOf(AbortSignal);
   });
 });
+
+describe("yahooQuote", () => {
+  it("heure de marché (regularMarketTime) en ms, absente si invalide", async () => {
+    const { yahooQuote } = await import("@/lib/prices/yahoo");
+    const at = new Date(2026, 9, 23, 17, 35);
+    expect(
+      yahooQuote({ symbol: "AAPL", regularMarketPrice: 10, currency: "USD", regularMarketChangePercent: 6, regularMarketTime: at }),
+    ).toEqual({ price: 10, currency: "USD", changePct: 6, changeAt: at.getTime() });
+    expect(yahooQuote({ symbol: "AAPL", regularMarketPrice: 10, currency: "USD" })).toEqual({
+      price: 10,
+      currency: "USD",
+      changePct: undefined,
+      changeAt: undefined,
+    });
+    expect(yahooQuote({ symbol: "AAPL", currency: "USD" })).toBeNull();
+  });
+});
+
+describe("refreshPrices — heure de la variation", () => {
+  it("enregistre changeAt (null sans heure)", async () => {
+    const db = freshDb();
+    addHolding(db, "AAPL", "stock");
+    addHolding(db, "MSFT", "stock");
+    const stock: PriceFetcher = async () =>
+      new Map([
+        ["AAPL", { price: 10, currency: "EUR", changePct: 6, changeAt: 1_700_000_000_000 }],
+        ["MSFT", { price: 10, currency: "EUR", changePct: 1 }],
+      ]);
+    await refreshPrices(db, { stock, crypto: async () => new Map(), fx: async () => 1 }, new Date(), true);
+    expect(db.select().from(prices).where(eq(prices.symbol, "AAPL")).get()!.changeAt).toBe(1_700_000_000_000);
+    expect(db.select().from(prices).where(eq(prices.symbol, "MSFT")).get()!.changeAt).toBeNull();
+  });
+});

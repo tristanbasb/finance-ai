@@ -33,6 +33,8 @@ export type AlertScope = {
 
 /** Fenêtre de fraîcheur d'une variation de cours : celle d'une actualisation qui vient d'avoir lieu. */
 const PRICE_FRESH_MS = 5 * 60_000;
+/** Variation d'action/ETF dont la séance a plus de 3 jours (cotation arrêtée, suspension) : ignorée. */
+const PRICE_SESSION_MAX_DAYS = 3;
 const MEDIAN_DAYS = 90;
 /** Une dépense plus ancienne (import d'historique, vieille correction) n'est plus d'actualité. */
 const EXPENSE_RECENT_DAYS = 35;
@@ -228,23 +230,37 @@ function expenseCandidates(db: Db, txs: (typeof transactions.$inferSelect)[], mi
   return unusualExpense({ transactions: inputs, minCents });
 }
 
+/**
+ * Variations de cours fraîches. Actions/ETF : la clé porte la date locale de la séance (heure
+ * de marché), pour qu'une variation du vendredi revue le week-end ou avant l'ouverture du lundi
+ * ne soit annoncée qu'une fois ; sans heure de séance ou séance de plus de 3 jours : ignorée.
+ * Cryptos (cotées en continu, variation sur 24 h) : date du jour.
+ */
 function priceCandidates(db: Db, thresholdPct: number, now: number, today: string): Alert[] {
-  const fresh = new Map<string, number>();
+  const fresh = new Map<string, { changePct: number; changeAt: number | null }>();
   for (const p of db.select().from(prices).where(gte(prices.fetchedAt, now - PRICE_FRESH_MS)).all()) {
-    if (p.changePct !== null) fresh.set(p.symbol, p.changePct);
+    if (p.changePct !== null) fresh.set(p.symbol, { changePct: p.changePct, changeAt: p.changeAt });
   }
+  const oldest = shiftDays(today, -PRICE_SESSION_MAX_DAYS);
   const bySymbol = new Map<string, PriceMoveInput>();
   for (const h of listHoldingsWithValues(db)) {
     if (h.assetType !== "stock" && h.assetType !== "etf" && h.assetType !== "crypto") continue;
-    const changePct = fresh.get(h.symbol);
-    if (changePct === undefined) continue;
+    const quote = fresh.get(h.symbol);
+    if (quote === undefined) continue;
+    let date = today;
+    if (h.assetType !== "crypto") {
+      if (quote.changeAt === null) continue;
+      date = todayLocal(new Date(quote.changeAt));
+      if (date < oldest) continue;
+    }
     const prev = bySymbol.get(h.symbol);
     bySymbol.set(h.symbol, {
       symbol: h.symbol,
       name: prev?.name ?? h.name,
-      changePct,
+      changePct: quote.changePct,
       priceCents: h.price,
       valueCents: (prev?.valueCents ?? 0) + h.value,
+      date,
     });
   }
   return priceMoveAlerts({ moves: [...bySymbol.values()], thresholdPct, date: today });
