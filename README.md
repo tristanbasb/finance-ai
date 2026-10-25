@@ -4,37 +4,51 @@
 Dépenses, épargne et investissements dans une interface moderne et simple — auto-hébergée,
 mono-utilisateur, installée en une commande.
 
-![Tableau de bord](docs/images/tableau-de-bord.png)
+![Accueil sur ordinateur, avec la colonne Claude](docs/images/accueil-ordinateur.png)
 
 <p align="center">
-  <img src="docs/images/investissements.jpg" alt="Page investissements" width="64%">
+  <img src="docs/images/accueil-mobile.png" alt="Accueil sur mobile, thème clair" width="24%">
   &nbsp;
-  <img src="docs/images/mobile-sombre.png" alt="Tableau de bord sur mobile, thème sombre" width="20%">
+  <img src="docs/images/saisie-rapide.png" alt="Saisie rapide : proposition de Claude à partir d'une phrase" width="24%">
+  &nbsp;
+  <img src="docs/images/activite-mobile-sombre.png" alt="Activité sur mobile, thème sombre" width="24%">
 </p>
 
 > Les captures contiennent uniquement des données de démonstration.
 
 ## Fonctionnalités
 
-- **Tableau de bord** : patrimoine net et son évolution, revenus et dépenses du mois, taux
-  d'épargne, dépenses par catégorie, suivi des budgets, dernières transactions.
-- **Transactions** : saisie rapide, filtres (mois, compte, catégorie, recherche),
-  **import CSV** de relevés bancaires (séparateurs `;`/`,`, dates FR/ISO, montants `1 234,56`),
-  catégorisation automatique par l'IA (optionnelle).
-- **Épargne** : comptes d'épargne et objectifs avec progression et montant mensuel nécessaire.
-- **Investissements** : actions, ETF et cryptos avec **cours automatiques** (Yahoo Finance,
-  CoinGecko, actualisés toutes les heures), actifs manuels (immobilier…), plus/moins-values, répartition par type.
-- **Assistant IA** (API Claude) : une conversation **permanente** (bulle flottante, panneau
-  latéral ou page `/assistant`) pour poser vos questions sur vos finances. L'IA consulte vos
-  données en **lecture seule** et ne les modifie jamais. Le modèle se choisit dans l'application.
+L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Budgets), un bouton
+**« + »** toujours à portée de main et Claude à côté de vous.
+
+- **Accueil** : patrimoine net et son évolution, dernier message de Claude, revenus, dépenses
+  et taux d'épargne du mois, budgets en un coup d'œil, dernières opérations.
+- **Saisie rapide en phrase libre** : touchez « + » et écrivez comme vous parlez
+  (« déjeuner au Petit Bistrot 18,50 € hier ») ; Claude propose montant, catégorie, date et
+  compte, vous vérifiez puis ajoutez. Un formulaire classique reste disponible, et sans clé API
+  la saisie se fait directement dans le formulaire.
+- **Activité** : opérations groupées par jour, recherche, filtres en pastilles (mois, compte,
+  catégorie), **import CSV** de relevés bancaires (séparateurs `;`/`,`, dates FR/ISO, montants
+  `1 234,56`), catégorisation automatique par l'IA (optionnelle).
+- **Patrimoine** : comptes courants et d'épargne, objectifs avec progression et montant mensuel
+  nécessaire, investissements (actions, ETF et cryptos avec **cours automatiques** Yahoo
+  Finance et CoinGecko actualisés toutes les heures, actifs manuels, plus/moins-values,
+  répartition par type).
+- **Budgets** : dépenses du mois par catégorie, budget **modifiable sur place** (touchez le
+  montant), mois précédents, et l'« Analyse IA » du mois.
+- **Claude** (API Claude) : une conversation **permanente**, dans une **colonne** à droite sur
+  grand écran, une bulle et un panneau sur mobile, ou en plein écran sur `/assistant`. L'IA
+  consulte vos données en **lecture seule** et ne les modifie jamais. Le modèle se choisit
+  dans l'application.
 - **Assistant proactif** : alertes (budgets, dépense inhabituelle, investissements, objectifs),
   bilans hebdomadaire et mensuel, cloche de notifications — voir
   [Assistant proactif](#assistant-proactif).
 - **Telegram** (optionnel) : recevez les alertes et discutez avec l'assistant depuis votre
   téléphone, via un bot privé — voir [Telegram](#telegram).
-- **Réglages** : comptes, catégories et budgets, notifications, Telegram, modèle de l'IA,
+- **Réglages** : comptes, catégories et budgets, modèle de l'IA, notifications, Telegram,
   export JSON complet.
-- Interface en français, en euros, responsive (mobile), thème clair et sombre.
+- Interface en français, en euros, pensée pour le mobile comme pour l'ordinateur, thème clair
+  et sombre, navigation au clavier.
 - Protégé par mot de passe, données stockées dans un simple fichier SQLite.
 
 > Finance AI fournit des informations générales : ce n'est **pas un conseil financier agréé**.
@@ -119,14 +133,13 @@ Toute la configuration est dans le fichier `.env` à la racine du dépôt (modè
 
 ## Assistant proactif
 
-L'assistant ne se contente pas de répondre : il vous prévient. Une **bulle** flottante ouvre la
-conversation avec Claude (panneau latéral, ou page plein écran `/assistant`) ; la **cloche**
-de la barre supérieure rassemble les notifications, et un message apparaît aussi en toast.
+L'assistant ne se contente pas de répondre : il vous prévient. Ses alertes et bilans arrivent
+dans la conversation avec Claude (colonne de droite sur grand écran, bulle et panneau sur
+mobile, page plein écran `/assistant`) ; le dernier message s'affiche sur l'Accueil, la
+**cloche** de l'en-tête rassemble les messages non lus, et un message apparaît aussi en toast.
 
 <p align="center">
-  <img src="docs/images/assistant.png" alt="Panneau de l'assistant avec des alertes" width="64%">
-  &nbsp;
-  <img src="docs/images/notifications.png" alt="Menu de la cloche de notifications" width="32%">
+  <img src="docs/images/notifications.png" alt="Menu de la cloche de notifications sur mobile" width="28%">
 </p>
 
 **Alertes** (réglages par défaut) :
@@ -174,8 +187,9 @@ la liaison est suspendue 10 minutes.
 
 ## Changer de modèle
 
-Le modèle de Claude se change sans toucher à `.env` : depuis l'**en-tête du chat**, depuis
-**Réglages**, ou avec `/modele` sur Telegram. La liste est récupérée auprès d'Anthropic et le
+Le modèle de Claude se change sans toucher à `.env` : depuis l'**en-tête de la conversation**
+(colonne, panneau ou page Assistant), depuis **Réglages → Assistant IA**, ou avec `/modele` sur
+Telegram. La liste est récupérée auprès d'Anthropic et le
 choix est conservé dans la base. `CLAUDE_MODEL` n'est que le modèle **par défaut**, utilisé tant
 que vous n'en avez pas choisi un autre.
 
@@ -282,8 +296,9 @@ Non interactif : `FINANCE_AI_PASSWORD='…' ./scripts/set-password.sh`.
 - Exceptions :
   - l'**IA** envoie à l'API d'Anthropic les données nécessaires à chaque demande :
     celles que l'assistant consulte pour répondre (soldes, transactions recherchées,
-    positions…), les chiffres du mois pour l'« Analyse IA » et les libellés à catégoriser
-    lors d'un import ; les **alertes et bilans** sont aussi rédigés avec Claude, à partir de
+    positions…), les chiffres du mois pour l'« Analyse IA », les libellés à catégoriser
+    lors d'un import et la phrase de la saisie rapide (avec la liste de vos catégories et
+    comptes) ; les **alertes et bilans** sont aussi rédigés avec Claude, à partir de
     vos chiffres ; sans clé API, rien n'est envoyé ;
   - si vous activez **Telegram**, les messages (alertes, bilans, discussion) transitent par
     les serveurs de Telegram ;
