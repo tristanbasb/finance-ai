@@ -121,13 +121,20 @@ describe("claimJob", () => {
   });
 });
 
+/** Bilans déjà passés (semaine 43, septembre) : le premier démarrage est derrière nous. */
+function pastRuns(db: ReturnType<typeof freshDb>) {
+  claimJob(db, "weekly", "2026-W43");
+  claimJob(db, "monthly", "2026-09");
+  return db;
+}
+
 function digestMessages(db: ReturnType<typeof freshDb>) {
   return db.select().from(messages).all().filter((m) => m.kind === "weekly" || m.kind === "monthly");
 }
 
 describe("tick : bilans", () => {
   it("génère le bilan hebdo une seule fois sur deux ticks", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn(async () => "**Bilan**\n\ncorps");
     const deps: TickDeps = { ai: fakeAi, generate };
@@ -139,8 +146,8 @@ describe("tick : bilans", () => {
     expect(rows[0]).toMatchObject({ kind: "weekly", role: "assistant", content: "**Bilan**\n\ncorps" });
   });
 
-  it("rattrapage au premier tick (mardi, serveur éteint lundi)", async () => {
-    const db = freshDb();
+  it("rattrapage (mardi, serveur éteint lundi)", async () => {
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn(async () => "x");
     await tick(db, new Date(2026, 9, 27, 14), { ai: fakeAi, generate });
@@ -149,31 +156,53 @@ describe("tick : bilans", () => {
   });
 
   it("échec de génération : réclamation libérée, nouvel essai au tick suivant", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue("ok");
     await tick(db, mon(9), { ai: fakeAi, generate });
     expect(digestMessages(db)).toHaveLength(0);
-    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()).toBeUndefined();
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()?.lastPeriod).toBe("2026-W43");
     await tick(db, mon(9, 15), { ai: fakeAi, generate });
     expect(generate).toHaveBeenCalledTimes(2);
     expect(digestMessages(db)).toHaveLength(1);
   });
 
-  it("IA absente : message unique par type", async () => {
-    const db = freshDb();
+  it("IA absente : un seul avis en tout, pas un par type", async () => {
+    const db = pastRuns(freshDb());
     await tick(db, mon(9), { ai: null });
     await tick(db, mon(9, 1), { ai: null });
     // semaine suivante : toujours pas de nouveau message
     await tick(db, new Date(2026, 10, 2, 9), { ai: null });
     const rows = digestMessages(db);
-    expect(rows.map((r) => r.kind).sort()).toEqual(["monthly", "weekly"]);
-    expect(rows.every((r) => r.content === AI_REQUIRED_NOTICE)).toBe(true);
-    expect(getSetting(db, "digest_ai_notice_weekly", z.boolean(), false)).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].content).toBe(AI_REQUIRED_NOTICE);
+    expect(getSetting(db, "digest_ai_notice", z.boolean(), false)).toBe(true);
+  });
+
+  it("premier démarrage : aucun bilan, périodes courantes réclamées ; période suivante : bilans", async () => {
+    const db = freshDb();
+    const generate = vi.fn(async () => "x");
+    await tick(db, mon(9), { ai: fakeAi, generate });
+    expect(generate).not.toHaveBeenCalled();
+    expect(digestMessages(db)).toHaveLength(0);
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()?.lastPeriod).toBe("2026-W44");
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "monthly")).get()?.lastPeriod).toBe("2026-10");
+    await tick(db, mon(10), { ai: fakeAi, generate });
+    expect(generate).not.toHaveBeenCalled();
+    // lundi 2 novembre : nouvelle semaine et nouveau mois
+    await tick(db, new Date(2026, 10, 2, 9), { ai: fakeAi, generate });
+    expect(generate.mock.calls.map((c) => (c as unknown[])[2]).sort()).toEqual(["monthly", "weekly"]);
+    expect(digestMessages(db)).toHaveLength(2);
+  });
+
+  it("premier démarrage sans IA : pas d'avis tout de suite", async () => {
+    const db = freshDb();
+    await tick(db, mon(9), { ai: null });
+    expect(digestMessages(db)).toHaveLength(0);
   });
 
   it("ne lève jamais", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     const generate = vi.fn().mockRejectedValue(new Error("boom"));
     await expect(tick(db, mon(9), { ai: fakeAi, generate })).resolves.toBeUndefined();
   });
@@ -206,7 +235,7 @@ describe("tick : cours horaires", () => {
   });
 
   it("une erreur de cours ne bloque pas les bilans", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     withHolding(db);
     const generate = vi.fn(async () => "x");
     const prices: PriceDeps = { stock: async () => { throw new Error("réseau"); }, crypto: async () => new Map(), fx: async () => 1 };
@@ -218,7 +247,7 @@ describe("tick : cours horaires", () => {
 describe("startScheduler", () => {
   it("tick immédiat, garde globalThis, arrêt", async () => {
     vi.useFakeTimers();
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn(async () => "x");
     const stop = startScheduler(db, { intervalMs: 1000, now: () => mon(9), deps: { ai: fakeAi, generate } });
@@ -265,17 +294,17 @@ describe("generateDigest : texte inutilisable", () => {
 
 describe("tick : politique de reprise", () => {
   it("échec de publication : réclamation libérée", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const conv = await import("@/lib/assistant/conversation");
     vi.spyOn(conv, "postAssistantMessage").mockRejectedValueOnce(new Error("dispatch"));
     const generate = vi.fn(async () => "x");
     await tick(db, mon(9), { ai: fakeAi, generate });
-    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()).toBeUndefined();
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()?.lastPeriod).toBe("2026-W43");
   });
 
   it("3 essais max, espacés de 15 min, puis abandon", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn().mockRejectedValue(new Error("boom"));
     const run = (min: number) => tick(db, mon(9, min), { ai: fakeAi, generate });
@@ -296,7 +325,7 @@ describe("tick : politique de reprise", () => {
   });
 
   it("modèle retiré : réglage effacé, nouvel essai avec le modèle par défaut", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     setModelSetting(db, "claude-retired-1");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -317,7 +346,7 @@ describe("tick : politique de reprise", () => {
   });
 
   it("nouvelle période : compteur remis à zéro", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn().mockRejectedValue(new Error("boom"));
     for (const m of [0, 15, 30]) await tick(db, mon(9, m), { ai: fakeAi, generate });
@@ -331,7 +360,7 @@ describe("tick : drapeau d'exécution", () => {
     (globalThis as { __financeTickRunning?: number }).__financeTickRunning = undefined;
   });
   it("drapeau récent : tick ignoré ; plus vieux que 10 min : ignoré", async () => {
-    const db = freshDb();
+    const db = pastRuns(freshDb());
     setSetting(db, "digests", { ...prefs, monthly: false });
     const generate = vi.fn(async () => "x");
     const g = globalThis as { __financeTickRunning?: number };

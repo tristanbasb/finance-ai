@@ -44,6 +44,21 @@ export const DIGEST_RETRY_DELAY_MS = 15 * 60_000;
 export const TICK_STALE_MS = 10 * 60_000;
 const retrySchema = z.object({ period: z.string(), attempts: z.number(), nextAt: z.number() });
 const retryKey = (kind: DigestKind) => `digest_retry_${kind}`;
+/** Avis « IA requise » : un seul message en tout, pour les deux types de bilan. */
+export const AI_NOTICE_KEY = "digest_ai_notice";
+const DIGEST_KINDS: DigestKind[] = ["weekly", "monthly"];
+const periodOf = (kind: DigestKind, now: Date) => (kind === "weekly" ? isoWeek(now) : monthKey(now));
+
+/**
+ * Premier démarrage (aucune exécution mémorisée pour ce type) : la période courante est
+ * réclamée sans bilan, pour ne pas envoyer d'emblée le bilan d'une période où l'application
+ * n'était pas encore utilisée. Seules les périodes réellement manquées ensuite sont rattrapées.
+ */
+function baselineDigests(db: Db, now: Date): void {
+  for (const kind of DIGEST_KINDS) {
+    if (lastPeriod(db, kind) === undefined) claimJob(db, kind, periodOf(kind, now), now.getTime());
+  }
+}
 
 /** Échec de génération/publication : au plus 3 essais par période, espacés d'au moins 15 min. */
 function recordFailure(db: Db, kind: DigestKind, period: string, previous: string | undefined, now: Date, err: unknown) {
@@ -61,16 +76,15 @@ function recordFailure(db: Db, kind: DigestKind, period: string, previous: strin
 }
 
 async function runDigest(db: Db, kind: DigestKind, now: Date, deps: TickDeps): Promise<void> {
-  const period = kind === "weekly" ? isoWeek(now) : monthKey(now);
+  const period = periodOf(kind, now);
   const previous = lastPeriod(db, kind);
   const retry = getSetting(db, retryKey(kind), retrySchema, null);
   if (retry?.period === period && retry.nextAt > now.getTime()) return;
   if (!claimJob(db, kind, period, now.getTime())) return;
   const ai = deps.ai === undefined ? getAi(db) : deps.ai;
   if (!ai) {
-    const noticeKey = `digest_ai_notice_${kind}`;
-    if (!getSetting(db, noticeKey, z.boolean(), false)) {
-      setSetting(db, noticeKey, true);
+    if (!getSetting(db, AI_NOTICE_KEY, z.boolean(), false)) {
+      setSetting(db, AI_NOTICE_KEY, true);
       await postAssistantMessage(db, { kind, content: AI_REQUIRED_NOTICE });
     }
     return;
@@ -113,6 +127,7 @@ export async function tick(db: Db, now: Date, deps: TickDeps = {}): Promise<void
   g.__financeTickRunning = now.getTime();
   try {
     try {
+      baselineDigests(db, now);
       const due = dueDigests(now, digestPrefs(db), {
         weekly: lastPeriod(db, "weekly"),
         monthly: lastPeriod(db, "monthly"),

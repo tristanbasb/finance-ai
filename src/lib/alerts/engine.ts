@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, isNull, like, lt } from "drizzle-orm";
+import { z } from "zod";
 import type { Db } from "@/lib/db";
 import { alertLog, categories, prices, transactions } from "@/lib/db/schema";
 import { aiErrorInfo, getAi, isModelNotFound, type Ai } from "@/lib/ai/client";
@@ -9,7 +10,7 @@ import { goalProgress } from "@/lib/finance";
 import { listGoalsWithCurrent } from "@/lib/queries/goals";
 import { listHoldingsWithValues } from "@/lib/queries/holdings";
 import { getOverview } from "@/lib/queries/overview";
-import { alertPrefs, setModelSetting } from "@/lib/settings";
+import { alertPrefs, getSetting, setModelSetting, setSetting } from "@/lib/settings";
 import {
   budgetAlerts,
   goalReachedAlerts,
@@ -258,6 +259,22 @@ function goalCandidates(db: Db, today: string): Alert[] {
       current: g.current,
       pct: goalProgress({ target: g.targetAmount, current: g.current, deadline: g.deadline }, today).pct,
     })),
+  });
+}
+
+/** Réglage posé une fois la référence initiale des alertes établie. */
+export const ALERTS_BASELINE_KEY = "alerts_baseline_done";
+
+/**
+ * Référence initiale, une seule fois (au démarrage, avant le planificateur) : les objectifs
+ * déjà atteints sont journalisés sans message, pour ne pas annoncer « Objectif atteint » pour
+ * des objectifs atteints avant l'arrivée des alertes. Les alertes budget du mois restent émises.
+ */
+export function baselineAlerts(db: Db, today: string = todayLocal()): void {
+  if (getSetting(db, ALERTS_BASELINE_KEY, z.boolean(), false)) return;
+  db.transaction((tx) => {
+    for (const a of goalCandidates(db, today)) tx.insert(alertLog).values({ key: a.key }).onConflictDoNothing().run();
+    setSetting(db, ALERTS_BASELINE_KEY, true); // même connexion : dans la transaction
   });
 }
 

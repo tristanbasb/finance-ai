@@ -6,11 +6,19 @@ import { seedDefaults } from "@/lib/db/seed";
 import { accounts, alertLog, categories, goals, holdings, messages, prices } from "@/lib/db/schema";
 import { budgetAlerts, goalReachedAlerts, priceMoveAlerts, unusualExpense } from "@/lib/alerts/rules";
 import Anthropic from "@anthropic-ai/sdk";
-import { ALERT_MESSAGE_TIMEOUT_MS, alertMessage, claimAlerts, runAlertChecks } from "@/lib/alerts/engine";
+import {
+  ALERT_MESSAGE_TIMEOUT_MS,
+  ALERTS_BASELINE_KEY,
+  alertMessage,
+  baselineAlerts,
+  claimAlerts,
+  runAlertChecks,
+} from "@/lib/alerts/engine";
 import { createTransaction, insertTransactions } from "@/lib/queries/transactions";
 import { refreshPrices, type PriceFetcher } from "@/lib/prices";
 import { registerChannel } from "@/lib/assistant/dispatch";
-import { getModelSetting, setModelSetting, setSetting } from "@/lib/settings";
+import { getModelSetting, getSetting, setModelSetting, setSetting } from "@/lib/settings";
+import { z } from "zod";
 import type { Ai } from "@/lib/ai/client";
 import * as conversation from "@/lib/assistant/conversation";
 
@@ -305,6 +313,24 @@ describe("runAlertChecks", () => {
     await runAlertChecks(db, { goals: true }, { ai: null, today: "2026-10-25" });
     expect(allMessages(db)).toHaveLength(1);
     expect(db.select().from(alertLog).all()[0].key).toMatch(/^goal:/);
+  });
+
+  it("référence initiale : objectif déjà atteint → pas d'alerte ; objectif atteint ensuite → alerte", async () => {
+    const db = freshDb();
+    const acc = account(db);
+    const old = db.insert(goals).values({ name: "Ancien", targetAmount: 100_000, currentAmount: 150_000 }).returning().get();
+    db.insert(goals).values({ name: "Vacances", targetAmount: 100_000, currentAmount: 0, accountId: acc.id }).run();
+    baselineAlerts(db, "2026-10-25");
+    expect(getSetting(db, ALERTS_BASELINE_KEY, z.boolean(), false)).toBe(true);
+    expect(db.select().from(alertLog).all().map((r) => r.key)).toEqual([`goal:${old.id}`]);
+    await runAlertChecks(db, { goals: true }, { ai: null, today: "2026-10-25" });
+    expect(allMessages(db)).toHaveLength(0);
+    createTransaction(db, { accountId: acc.id, categoryId: null, date: "2026-10-26", amount: 2_000_000, label: "Salaire" });
+    baselineAlerts(db, "2026-10-26"); // déjà faite : sans effet
+    await runAlertChecks(db, { goals: true }, { ai: null, today: "2026-10-26" });
+    expect(allMessages(db)).toHaveLength(1);
+    expect(allMessages(db)[0].content).toContain("Vacances");
+    expect(allMessages(db)[0].content).not.toContain("Ancien");
   });
 
   it("variation de cours après actualisation, changePct stocké", async () => {

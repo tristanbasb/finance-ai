@@ -10,6 +10,9 @@ export async function register() {
   // Pas de tâches de fond (planificateur, bot Telegram) pendant `next build`. `FINANCE_AI_DISABLE_JOBS=1` les coupe aussi
   // (échappement : dev/diagnostic sans bilans ni actualisation automatique des cours).
   if (process.env.NEXT_PHASE === "phase-production-build") return;
+  // Une seule fois : objectifs déjà atteints journalisés sans message, avant toute alerte.
+  const { baselineAlerts } = await import("./lib/alerts/engine");
+  baselineAlerts(db);
   if (process.env.FINANCE_AI_DISABLE_JOBS === "1") return;
   const { startScheduler } = await import("./lib/jobs/scheduler");
   startScheduler(db);
