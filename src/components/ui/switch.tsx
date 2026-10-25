@@ -32,17 +32,17 @@ export function Switch({ checked, onChange, label, description, disabled, classN
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative mt-0.5 inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-transparent",
+          "relative mt-0.5 inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border border-transparent",
           "transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          checked ? "bg-accent" : "bg-border-strong",
+          checked ? "bg-brand-gradient shadow-glow" : "bg-border-strong",
         )}
       >
         <span
           aria-hidden
           className={cn(
-            "pointer-events-none block size-[18px] rounded-full bg-white shadow-sm transition-transform duration-150 dark:bg-bg",
-            checked ? "translate-x-[18px]" : "translate-x-[3px]",
+            "pointer-events-none block size-[22px] rounded-full bg-white shadow-sm transition-transform duration-150",
+            checked ? "translate-x-[22px]" : "translate-x-[2px]",
           )}
         />
       </button>

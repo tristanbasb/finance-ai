@@ -3,10 +3,11 @@ import { cn } from "@/lib/cn";
 
 /** Classes partagées par les champs de saisie (input, select, textarea). */
 export const controlClasses =
-  "h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg " +
-  "placeholder:text-subtle transition-[border-color,box-shadow] duration-150 " +
-  "hover:border-border-strong focus-visible:border-accent focus-visible:outline-none " +
-  "focus-visible:ring-3 focus-visible:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60 " +
+  // 16 px sur mobile (évite le zoom iOS au focus), 44 px de haut sur écran tactile.
+  "h-10 w-full rounded-xl border border-border-strong/70 bg-surface px-3.5 text-base text-fg sm:text-sm " +
+  "pointer-coarse:h-11 placeholder:text-subtle transition-[border-color,box-shadow] duration-150 " +
+  "hover:border-border-strong focus-visible:border-ring focus-visible:outline-none " +
+  "focus-visible:ring-4 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-60 " +
   "aria-invalid:border-danger aria-invalid:focus-visible:ring-danger/20";
 
 /** Libellé, aide et message d'erreur autour d'un champ. */
@@ -28,7 +29,7 @@ export function Field({
   return (
     <div className={cn("space-y-1.5", className)}>
       {label && (
-        <label htmlFor={id} className="block text-[13px] font-medium text-fg">
+        <label htmlFor={id} className="block text-[13px] font-semibold text-fg">
           {label}
         </label>
       )}

@@ -29,6 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { tintStyle } from "@/lib/category-tint";
 
 /** Icônes lucide utilisables pour une catégorie (nom kebab stocké en base → composant). */
 const ICONS = {
@@ -79,12 +80,23 @@ export type CategoryIconProps = {
   /** Couleur de la catégorie (#rrggbb) ; gris neutre si absente. */
   color?: string | null;
   /** Taille de la pastille. */
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
+  /**
+   * Pastille pastel calculée par `categoryTint` (fond mélangé à la surface, icône au
+   * contraste AA), adaptée au clair et au sombre. Sinon, simple teinte transparente.
+   */
+  tinted?: boolean;
   className?: string;
 };
 
+const sizes = {
+  sm: "size-7 [&_svg]:size-3.5",
+  md: "size-9 [&_svg]:size-4",
+  lg: "size-11 [&_svg]:size-5",
+} as const;
+
 /** Pastille ronde teintée de la couleur de la catégorie, avec son icône. */
-export function CategoryIcon({ icon, color, size = "md", className }: CategoryIconProps) {
+export function CategoryIcon({ icon, color, size = "md", tinted = false, className }: CategoryIconProps) {
   const Icon = icon && Object.hasOwn(ICONS, icon) ? ICONS[icon as CategoryIconName] : Tag;
   const tint = color ?? "#94a3b8";
   return (
@@ -92,13 +104,15 @@ export function CategoryIcon({ icon, color, size = "md", className }: CategoryIc
       aria-hidden
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full",
-        size === "sm" ? "size-7 [&_svg]:size-3.5" : "size-9 [&_svg]:size-4",
+        sizes[size],
+        tinted && "tint",
         className,
       )}
-      style={{
-        color: tint,
-        backgroundColor: `color-mix(in srgb, ${tint} 14%, transparent)`,
-      }}
+      style={
+        tinted
+          ? tintStyle(color)
+          : { color: tint, backgroundColor: `color-mix(in srgb, ${tint} 14%, transparent)` }
+      }
     >
       <Icon strokeWidth={2} />
     </span>

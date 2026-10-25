@@ -9,53 +9,73 @@
 
 :root {
   color-scheme: light;
-  --bg: #f5f6f8;
+  /* Surfaces : blanc lumineux sur un fond très clair. */
+  --bg: #f8fafc;
   --surface: #ffffff;
-  --surface-2: #f0f2f5;
-  --border: #e3e6eb;
-  --border-strong: #cfd4dc;
-  --fg: #0d1117;
-  --fg-muted: #586070;
-  --fg-subtle: #8a91a0;
-  --accent: #3157d5;
+  --surface-2: #f3f4fb;
+  --border: #eceef6;
+  --border-strong: #d8dbea;
+  /* Texte. `--text` / `--muted` sont les noms canoniques, `--fg*` restent pour compatibilité. */
+  --text: #12142b;
+  --muted: #565b78;
+  --fg: var(--text);
+  --fg-muted: var(--muted);
+  --fg-subtle: #878ca8;
+  /* Signature : dégradé indigo → violet (texte blanc ≥ 5,3:1 sur les deux extrémités). */
+  --brand-from: #4f46e5;
+  --brand-to: #9333ea;
+  --brand: #4f46e5;
+  --brand-soft: #eef0ff;
+  --accent: var(--brand);
   --accent-fg: #ffffff;
-  --accent-soft: #eaeffc;
+  --accent-soft: var(--brand-soft);
+  /* États. */
   --positive: #0f7f4a;
-  --positive-soft: #e6f4ec;
-  --warning: #b86e00;
-  --warning-fill: #e59a1a;
-  --warning-soft: #fdf3e2;
-  --danger: #c93636;
-  --danger-soft: #fbeaea;
-  --grid: #eceef2;
-  --ring: #3157d5;
-  --shadow-pop: 0 12px 32px -12px rgb(13 17 23 / 0.18), 0 2px 6px -2px rgb(13 17 23 / 0.08);
+  --positive-soft: #e3f6ea;
+  --negative: #c93636;
+  --negative-soft: #fdeaea;
+  --warning: #a35f00;
+  --warning-fill: #f0a020;
+  --warning-soft: #fef3dc;
+  --danger: var(--negative);
+  --danger-soft: var(--negative-soft);
+  --grid: #eef0f6;
+  --ring: #6366f1;
+  /* Ombres douces teintées indigo. */
+  --shadow-soft: 0 10px 30px -14px rgb(79 70 229 / 0.2), 0 2px 6px -3px rgb(79 70 229 / 0.08);
+  --shadow-pop: 0 24px 48px -16px rgb(49 40 140 / 0.28), 0 4px 12px -4px rgb(49 40 140 / 0.1);
+  --shadow-glow: 0 10px 22px -10px rgb(99 60 230 / 0.6);
+  /* Rayons. */
+  --radius-card: 16px;
+  --radius-hero: 24px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --bg: #0a0c10;
-    --surface: #12151b;
-    --surface-2: #1a1e26;
-    --border: #232833;
-    --border-strong: #323946;
-    --fg: #eef0f4;
-    --fg-muted: #a2a9b6;
-    --fg-subtle: #6e7684;
-    --accent: #6b8af2;
-    --accent-fg: #0a0c10;
-    --accent-soft: #1b2340;
-    --positive: #3ecf8e;
-    --positive-soft: #12271d;
-    --warning: #f2b441;
+    --bg: #0f1023;
+    --surface: #181a33;
+    --surface-2: #212443;
+    --border: #262947;
+    --border-strong: #353961;
+    --text: #eef0fb;
+    --muted: #a9adcb;
+    --fg-subtle: #7479a1;
+    --brand: #a5b4fc;
+    --brand-soft: #262a5c;
+    --accent-fg: #0f1023;
+    --positive: #4ad59a;
+    --positive-soft: #13302a;
+    --negative: #f58a8a;
+    --negative-soft: #3a1b2a;
+    --warning: #f5c060;
     --warning-fill: #f2b441;
-    --warning-soft: #2a2110;
-    --danger: #f07272;
-    --danger-soft: #2c1517;
-    --grid: #1d212a;
-    --ring: #6b8af2;
-    --shadow-pop: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+    --warning-soft: #33291b;
+    --grid: #22253f;
+    --ring: #a5b4fc;
+    --shadow-soft: 0 12px 32px -14px rgb(0 0 0 / 0.65), 0 2px 6px -3px rgb(0 0 0 / 0.4);
+    --shadow-pop: 0 28px 56px -18px rgb(0 0 0 / 0.8), 0 4px 12px -4px rgb(0 0 0 / 0.5);
+    --shadow-glow: 0 12px 26px -12px rgb(124 58 237 / 0.7);
   }
 }
 
@@ -68,14 +88,21 @@
   --color-surface-2: var(--surface-2);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
-  --color-fg: var(--fg);
-  --color-muted: var(--fg-muted);
+  --color-text: var(--text);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
   --color-subtle: var(--fg-subtle);
+  --color-brand: var(--brand);
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
+  --color-brand-soft: var(--brand-soft);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
   --color-positive: var(--positive);
   --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
   --color-warning: var(--warning);
   --color-warning-fill: var(--warning-fill);
   --color-warning-soft: var(--warning-soft);
@@ -83,6 +110,9 @@
   --color-danger-soft: var(--danger-soft);
   --color-grid: var(--grid);
   --color-ring: var(--ring);
+
+  --radius-card: var(--radius-card);
+  --radius-hero: var(--radius-hero);
 
   --shadow-pop: var(--shadow-pop);
 }
@@ -113,8 +143,41 @@
 
   /* Le fond du <dialog> natif suit les jetons. */
   dialog::backdrop {
-    background: rgb(10 12 16 / 0.45);
-    backdrop-filter: blur(2px);
+    background: rgb(15 16 35 / 0.42);
+    backdrop-filter: blur(3px);
+  }
+}
+
+/* Dégradé de marque (bouton primaire, carte héros, état actif). */
+@utility bg-brand-gradient {
+  background-color: var(--brand-from);
+  background-image: linear-gradient(135deg, var(--brand-from) 0%, var(--brand-to) 100%);
+}
+
+/* Ombre douce teintée indigo (cartes). */
+@utility shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+/* Ombre colorée sous les éléments en dégradé. */
+@utility shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+/*
+ * Teinte pastel d'une catégorie : lit les variables posées par `tintStyle()`
+ * (src/lib/category-tint.ts) et choisit la paire claire ou sombre selon le schéma.
+ */
+@utility tint {
+  --tint-bg: var(--tint-bg-light);
+  --tint-fg: var(--tint-fg-light);
+  --tint-ring: var(--tint-ring-light);
+  background-color: var(--tint-bg);
+  color: var(--tint-fg);
+  @media (prefers-color-scheme: dark) {
+    --tint-bg: var(--tint-bg-dark);
+    --tint-fg: var(--tint-fg-dark);
+    --tint-ring: var(--tint-ring-dark);
   }
 }
 

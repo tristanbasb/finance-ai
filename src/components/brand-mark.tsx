@@ -1,20 +1,28 @@
 import { cn } from "@/lib/cn";
 
-/** Logo : une courbe montante dans un carré à l'accent. */
+/**
+ * Logo : une courbe montante blanche dans un carré arrondi au dégradé de marque.
+ * Le dégradé est en CSS (pas de `<linearGradient>` à identifiant, qui casse quand une
+ * autre copie du logo est masquée).
+ */
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" aria-hidden className={cn("size-8", className)}>
-      <rect width="32" height="32" rx="9" fill="var(--accent)" />
-      <path
-        d="M8 20.5 13.2 15.2l3.9 3.4L24 11.5"
-        fill="none"
-        stroke="var(--accent-fg)"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="24" cy="11.5" r="2.2" fill="var(--accent-fg)" />
-    </svg>
+    <span
+      aria-hidden
+      className={cn("inline-flex size-8 shrink-0 rounded-[28%] bg-brand-gradient shadow-glow", className)}
+    >
+      <svg viewBox="0 0 32 32" className="size-full">
+        <path
+          d="M8 20.5 13.2 15.2l3.9 3.4L24 11.5"
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="24" cy="11.5" r="2.2" fill="#ffffff" />
+      </svg>
+    </span>
   );
 }
 

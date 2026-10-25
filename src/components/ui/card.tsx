@@ -3,11 +3,11 @@ import { cn } from "@/lib/cn";
 
 type DivProps = HTMLAttributes<HTMLDivElement>;
 
-/** Carte à bordure fine sur la surface. */
+/** Carte blanche arrondie, bordure quasi invisible et ombre douce teintée. */
 export function Card({ className, ...props }: DivProps) {
   return (
     <div
-      className={cn("rounded-2xl border border-border bg-surface", className)}
+      className={cn("rounded-card border border-border bg-surface shadow-soft", className)}
       {...props}
     />
   );
@@ -34,7 +34,7 @@ export function CardHeader({
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h2
-      className={cn("text-[15px] font-semibold tracking-[-0.01em] text-fg", className)}
+      className={cn("text-base font-bold tracking-[-0.015em] text-fg", className)}
       {...props}
     />
   );

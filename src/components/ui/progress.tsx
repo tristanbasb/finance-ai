@@ -3,13 +3,13 @@ import { cn } from "@/lib/cn";
 export type ProgressLevel = "ok" | "warn" | "over";
 
 const fills: Record<ProgressLevel, string> = {
-  ok: "bg-accent",
+  ok: "bg-brand-gradient",
   warn: "bg-warning-fill",
   over: "bg-danger",
 };
 
 const tracks: Record<ProgressLevel, string> = {
-  ok: "bg-accent-soft",
+  ok: "bg-brand-soft",
   warn: "bg-warning-soft",
   over: "bg-danger-soft",
 };
@@ -38,7 +38,7 @@ export function Progress({ value, level = "ok", label, valueText, color, classNa
       aria-valuemax={100}
       aria-valuenow={pct}
       aria-valuetext={valueText}
-      className={cn("h-1.5 w-full overflow-hidden rounded-full", !color && tracks[level], className)}
+      className={cn("h-2 w-full overflow-hidden rounded-full", !color && tracks[level], className)}
       style={color ? { backgroundColor: `color-mix(in srgb, ${color} 18%, transparent)` } : undefined}
     >
       <div

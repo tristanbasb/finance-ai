@@ -87,7 +87,7 @@ export function Toaster() {
           key={t.id}
           role={t.variant === "error" ? "alert" : "status"}
           className={cn(
-            "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-pop",
+            "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 shadow-pop",
             "transition-[opacity,translate] duration-200 ease-out starting:translate-y-2 starting:opacity-0",
           )}
         >
@@ -102,7 +102,7 @@ export function Toaster() {
                   dismissToast(t.id);
                   t.action?.onClick();
                 }}
-                className="mt-2 inline-flex h-7 items-center rounded-md bg-accent-soft px-2.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
+                className="mt-2 inline-flex h-8 items-center rounded-full bg-brand-soft px-3 text-[13px] font-semibold text-brand transition-colors hover:bg-brand hover:text-accent-fg"
               >
                 {t.action.label}
               </button>
@@ -112,7 +112,7 @@ export function Toaster() {
             type="button"
             onClick={() => dismissToast(t.id)}
             aria-label="Fermer la notification"
-            className="-mr-1 inline-flex size-6 items-center justify-center rounded-md text-subtle hover:bg-surface-2 hover:text-fg"
+            className="-mr-1 inline-flex size-7 items-center justify-center rounded-full text-subtle hover:bg-surface-2 hover:text-fg"
           >
             <X aria-hidden className="size-3.5" />
           </button>
