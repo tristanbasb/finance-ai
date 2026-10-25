@@ -348,17 +348,19 @@ export function AssistantConversation({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1">
+      {/* Téléphone : l'en-tête de l'application porte déjà le titre ; le fil prend la place. */}
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="space-y-1 max-md:sr-only">
           <p className="text-[13px] text-muted">Réponses, alertes et bilans de Claude</p>
-          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Assistant</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg md:text-[28px]">Assistant</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <ModelSelect />
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 md:w-auto">
+          <ModelSelect className="min-w-0" />
           {newConversationButton}
         </div>
       </header>
-      <Card className="flex h-[calc(100dvh-20rem-env(safe-area-inset-bottom))] min-h-[26rem] flex-col overflow-hidden md:h-[calc(100dvh-12.5rem)]">
+      {/* Hauteur : fenêtre moins l'en-tête mobile, la ligne d'actions et la barre du bas (bouton « + » compris). */}
+      <Card className="flex h-[calc(100dvh-var(--mobile-header-h)-11rem-env(safe-area-inset-bottom))] min-h-[24rem] flex-col overflow-hidden md:h-[calc(100dvh-12.5rem)]">
         {body}
       </Card>
     </div>

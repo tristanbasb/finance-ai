@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Download, KeyRound } from "lucide-react";
+import { Database, Download, KeyRound } from "lucide-react";
 import { getDb } from "@/lib/db";
 import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listCategories } from "@/lib/queries/categories";
@@ -7,6 +7,7 @@ import { AccountsManager } from "@/components/settings/accounts-manager";
 import { AiStatus } from "@/components/settings/ai-status";
 import { CategoriesManager } from "@/components/settings/categories-manager";
 import { NotificationsSettings } from "@/components/settings/notifications-settings";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { TelegramSettings } from "@/components/settings/telegram-settings";
 import { LogoutButton } from "@/components/logout-button";
 import { buttonClasses } from "@/components/ui/button";
@@ -45,12 +46,20 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Réglages</h1>
       </header>
 
+      <SettingsNav />
+
       <AccountsManager accounts={accounts} />
       <CategoriesManager categories={categories} />
+      <AiStatus />
+      <NotificationsSettings />
+      <TelegramSettings />
 
-      <Card id="donnees" className="scroll-mt-6">
+      <Card id="donnees" className="scroll-mt-32">
         <CardHeader>
-          <CardTitle>Données</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Database aria-hidden className="size-4 text-muted" />
+            Données
+          </CardTitle>
           <CardDescription>Vos données restent sur votre serveur. Exportez-les quand vous le souhaitez.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -66,11 +75,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <AiStatus />
-      <NotificationsSettings />
-      <TelegramSettings />
-
-      <Card id="securite" className="scroll-mt-6">
+      <Card id="securite" className="scroll-mt-32">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <KeyRound aria-hidden className="size-4 text-muted" />
@@ -83,9 +88,7 @@ export default function SettingsPage() {
             Pour changer le mot de passe, exécutez <code className={codeClasses}>./scripts/set-password.sh</code> sur
             le serveur, puis reconnectez-vous.
           </p>
-          <div className="w-44 rounded-lg border border-border">
-            <LogoutButton />
-          </div>
+          <LogoutButton appearance="button" />
         </CardContent>
       </Card>
     </div>

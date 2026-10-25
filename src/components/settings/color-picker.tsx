@@ -65,7 +65,7 @@ export function ColorPicker({
               onClick={() => onChange(c)}
               style={{ backgroundColor: c }}
               className={cn(
-                "inline-flex size-8 items-center justify-center rounded-full text-white transition-shadow",
+                "inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-full text-white transition-shadow",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                 active && "ring-2 ring-fg ring-offset-2 ring-offset-surface",
               )}

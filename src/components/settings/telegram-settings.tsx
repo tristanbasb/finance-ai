@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, Send } from "lucide-react";
+import { Check, Copy, ExternalLink, Link2, RefreshCw, Send, Unlink2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +73,7 @@ function CodeCard({
         </p>
         <p className="text-[13px] text-muted">Le code n&apos;est plus valable. Générez-en un nouveau.</p>
         <Button onClick={onRegenerate} loading={busy}>
+          {!busy && <RefreshCw aria-hidden />}
           Générer un nouveau code
         </Button>
       </div>
@@ -213,7 +214,7 @@ export function TelegramSettings() {
   const bot = status?.botUsername ? `@${status.botUsername}` : "votre bot";
 
   return (
-    <Card id="telegram" className="scroll-mt-6">
+    <Card id="telegram" className="scroll-mt-32">
       <CardHeader
         action={
           status?.linked ? (
@@ -274,6 +275,7 @@ export function TelegramSettings() {
                   {bot}.
                 </p>
                 <Button onClick={() => void generate()} loading={busy}>
+                  {!busy && <Link2 aria-hidden />}
                   Relier mon compte
                 </Button>
               </div>
@@ -291,6 +293,7 @@ export function TelegramSettings() {
                 Compte relié à <strong className="font-semibold">{bot}</strong>
               </p>
               <Button variant="secondary" onClick={() => setConfirmUnlink(true)}>
+                <Unlink2 aria-hidden />
                 Délier
               </Button>
             </div>
@@ -311,6 +314,7 @@ export function TelegramSettings() {
               Annuler
             </Button>
             <Button variant="danger" onClick={() => void unlink()} loading={busy}>
+              {!busy && <Unlink2 aria-hidden />}
               Délier
             </Button>
           </>

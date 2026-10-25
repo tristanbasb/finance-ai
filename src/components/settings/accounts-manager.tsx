@@ -50,7 +50,7 @@ export function AccountsManager({ accounts }: { accounts: AccountRow[] }) {
   }
 
   return (
-    <Card id="comptes" className="scroll-mt-6">
+    <Card id="comptes" className="scroll-mt-32">
       <CardHeader
         action={
           <Button size="sm" onClick={openAdd}>
@@ -59,7 +59,10 @@ export function AccountsManager({ accounts }: { accounts: AccountRow[] }) {
           </Button>
         }
       >
-        <CardTitle>Comptes</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Landmark aria-hidden className="size-4 text-muted" />
+          Comptes
+        </CardTitle>
         <CardDescription>Vos comptes courants, livrets et portefeuilles d&apos;investissement.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

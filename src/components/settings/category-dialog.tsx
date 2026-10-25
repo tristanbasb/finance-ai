@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog } from "@/components/ui/dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -167,7 +167,7 @@ export function CategoryDialog({ open, onClose, category, defaultKind = "expense
   );
 
   return (
-    <Dialog open={open} onClose={onClose} title={editing ? "Modifier la catégorie" : "Nouvelle catégorie"} footer={footer}>
+    <Sheet open={open} onClose={onClose} title={editing ? "Modifier la catégorie" : "Nouvelle catégorie"} footer={footer}>
       <form id={formId} onSubmit={submit} noValidate className="space-y-4">
         <div className="flex items-end gap-3">
           <CategoryIcon icon={icon} color={color} className="mb-0.5" />
@@ -208,7 +208,7 @@ export function CategoryDialog({ open, onClose, category, defaultKind = "expense
         <ColorPicker value={color} onChange={setColor} palette={CATEGORY_COLORS} />
         <IconPicker value={icon} onChange={setIcon} color={color} />
       </form>
-    </Dialog>
+    </Sheet>
   );
 }
 

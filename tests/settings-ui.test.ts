@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  SETTINGS_SECTIONS,
+  activeSection,
   botDeepLink,
   formatCountdown,
   HOUR_OPTIONS,
@@ -74,5 +76,38 @@ describe("revertKeys", () => {
     const state = { a: 2, b: 2, c: 3 };
     expect(revertKeys(state, previous, { a: 2 })).toEqual({ a: 1, b: 2, c: 3 });
     expect(state).toEqual({ a: 2, b: 2, c: 3 });
+  });
+});
+
+describe("SETTINGS_SECTIONS / activeSection", () => {
+  it("liste les sept rubriques dans l'ordre de la page", () => {
+    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual([
+      "Comptes",
+      "Catégories",
+      "Assistant IA",
+      "Notifications",
+      "Telegram",
+      "Données",
+      "Sécurité",
+    ]);
+  });
+
+  const tops = SETTINGS_SECTIONS.map((s, i) => ({ id: s.id, top: 200 + i * 600 }));
+
+  it("première rubrique en haut de page", () => {
+    expect(activeSection(tops, 140, false)).toBe("comptes");
+  });
+
+  it("dernière rubrique dont le haut a passé le seuil", () => {
+    const shifted = tops.map((t) => ({ ...t, top: t.top - 1300 }));
+    expect(activeSection(shifted, 140, false)).toBe("ia");
+  });
+
+  it("dernière rubrique en bas de page, même si son haut n'a pas passé le seuil", () => {
+    expect(activeSection(tops, 140, true)).toBe("securite");
+  });
+
+  it("aucune rubrique mesurée : la première", () => {
+    expect(activeSection([], 140, false)).toBe("comptes");
   });
 });

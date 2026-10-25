@@ -24,7 +24,7 @@ export function CategoriesManager({ categories }: { categories: CategoryRow[] })
   const incomes = categories.filter((c) => c.kind === "income");
 
   return (
-    <Card id="categories" className="scroll-mt-6">
+    <Card id="categories" className="scroll-mt-32">
       <CardHeader
         action={
           <Button size="sm" onClick={() => openAdd("expense")}>
@@ -33,7 +33,10 @@ export function CategoriesManager({ categories }: { categories: CategoryRow[] })
           </Button>
         }
       >
-        <CardTitle>Catégories</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Tags aria-hidden className="size-4 text-muted" />
+          Catégories
+        </CardTitle>
         <CardDescription>
           Classez vos transactions et fixez un budget mensuel par catégorie de dépenses.
         </CardDescription>

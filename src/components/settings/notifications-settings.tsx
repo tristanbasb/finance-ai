@@ -104,7 +104,7 @@ function NumberField({
             void commit();
           }
         }}
-        className={cn(numberClasses, "h-9 w-24 text-right tabular-nums")}
+        className={cn(numberClasses, "h-9 w-24 text-right tabular-nums pointer-coarse:h-11")}
       />
       <span aria-hidden>{suffix}</span>
       {error && (
@@ -194,7 +194,7 @@ export function NotificationsSettings() {
   const subDisabled = alerts !== null && !alerts.enabled;
 
   return (
-    <Card id="notifications" className="scroll-mt-6">
+    <Card id="notifications" className="scroll-mt-32">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell aria-hidden className="size-4 text-muted" />

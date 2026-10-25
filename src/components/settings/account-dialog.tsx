@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog } from "@/components/ui/dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -192,7 +192,7 @@ export function AccountDialog({ open, onClose, account }: AccountDialogProps) {
   );
 
   return (
-    <Dialog open={open} onClose={onClose} title={editing ? "Modifier le compte" : "Nouveau compte"} footer={footer}>
+    <Sheet open={open} onClose={onClose} title={editing ? "Modifier le compte" : "Nouveau compte"} footer={footer}>
       <form id={formId} onSubmit={submit} noValidate className="space-y-4">
         <Input
           label="Nom"
@@ -243,6 +243,6 @@ export function AccountDialog({ open, onClose, account }: AccountDialogProps) {
           </label>
         )}
       </form>
-    </Dialog>
+    </Sheet>
   );
 }

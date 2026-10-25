@@ -51,3 +51,32 @@ export function revertKeys<T extends object>(state: T, previous: T, patch: Parti
   for (const key of Object.keys(patch) as (keyof T)[]) next[key] = previous[key];
   return next;
 }
+
+/** Rubriques de la page Réglages, dans l'ordre d'affichage : ancre et libellé du sommaire. */
+export const SETTINGS_SECTIONS = [
+  { id: "comptes", label: "Comptes" },
+  { id: "categories", label: "Catégories" },
+  { id: "ia", label: "Assistant IA" },
+  { id: "notifications", label: "Notifications" },
+  { id: "telegram", label: "Telegram" },
+  { id: "donnees", label: "Données" },
+  { id: "securite", label: "Sécurité" },
+] as const;
+
+export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
+
+/**
+ * Rubrique courante du sommaire : la dernière dont le haut a dépassé `threshold` (px depuis le
+ * haut de la fenêtre), ou la dernière rubrique quand la page est défilée jusqu'en bas.
+ */
+export function activeSection(
+  tops: readonly { id: SettingsSectionId; top: number }[],
+  threshold: number,
+  atBottom: boolean,
+): SettingsSectionId {
+  if (tops.length === 0) return SETTINGS_SECTIONS[0].id;
+  if (atBottom) return tops[tops.length - 1].id;
+  let current = tops[0].id;
+  for (const t of tops) if (t.top <= threshold) current = t.id;
+  return current;
+}
