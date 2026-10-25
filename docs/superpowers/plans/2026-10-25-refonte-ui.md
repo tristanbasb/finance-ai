@@ -16,7 +16,7 @@
 - Dégradé signature `#4f46e5 → #9333ea` ; fond page `#f8fafc` / cartes `#ffffff` ; sombre : fond `#0f1023`, cartes `#181a33`.
 - Rayons : 16 px cartes, 24 px héros et feuilles ; cibles tactiles ≥ 44 px ; pas de défilement horizontal à 375 px.
 - Breakpoints : mobile < 768 px ; barre latérale ≥ 768 px ; colonne Claude ≥ 1280 px.
-- Pas d'emoji dans les données ; seul emoji UI autorisé : 👋 de la salutation.
+- **Aucun emoji** dans l'interface ni les données (y compris la salutation) : uniquement de vrais boutons et liens stylés avec icônes lucide + texte ; les icônes seules ont un `aria-label`.
 - Contraste AA (texte sur pastels, texte blanc sur dégradé) en clair et sombre ; `prefers-reduced-motion` respecté.
 - Les API existantes et leurs contrats ne changent pas ; les 468 tests existants doivent continuer à passer (adapter uniquement les tests de composants dont le markup change).
 - `cn()` ne fusionne pas les classes Tailwind en conflit : ne pas surcharger les classes de taille des primitives.
@@ -151,6 +151,6 @@ README.md, docs/images/*                  captures
 
 **Files:** Modify `src/app/(app)/settings/page.tsx` + `src/components/settings/*` (présentation : sections en cartes, sommaire d'ancres en Chips sur mobile), `src/app/(app)/assistant/page.tsx`, `README.md`, `docs/images/*`.
 
-- [ ] Step 1: Réglages et page Assistant alignés sur le style ; passe globale 375/768/1280/1440 clair/sombre (corriger débordements, contrastes, focus).
+- [ ] Step 1: Retirer les emojis restants du code (préfixes 🔔/📊 des messages Telegram dans `src/lib/telegram/bot.ts` → « Alerte : » / « Bilan : », et tout autre emoji trouvé par grep dans `src/`), avec test ; Réglages et page Assistant alignés sur le style ; passe globale 375/768/1280/1440 clair/sombre (corriger débordements, contrastes, focus).
 - [ ] Step 2: README : nouvelles captures (accueil mobile, accueil ordinateur avec colonne Claude, saisie rapide) prises sur un build de production avec données fictives ; section fonctionnalités mise à jour (saisie en phrase libre).
 - [ ] Step 3: `npm test`, typecheck, lint, build ; Commit `feat(ui): finitions et documentation de la refonte`.

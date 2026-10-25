@@ -40,12 +40,12 @@ Décisions prises avec l'utilisateur (maquettes) :
 - **Pastels par catégorie** : chaque catégorie garde sa couleur (`categories.color`) ;
   l'UI en dérive un fond pastel (couleur à ~15 % d'opacité) et un texte foncé lisible
   (contraste AA vérifié). L'icône lucide existante est posée dans une pastille ronde.
-  Pas d'emoji dans les données.
+  **Aucun emoji nulle part** (ni données, ni interface, ni messages générés côté UI) : toutes les actions sont de vrais boutons (`<button>`/liens stylés) avec icônes vectorielles lucide et libellé texte ; les maquettes utilisaient des emojis uniquement comme repères.
 - **Formes** : rayons 16 px (cartes), 24 px (carte héros, feuilles), boutons pleins
   arrondis ; ombres douces teintées indigo ; bordures quasi invisibles.
 - **Typographie** : Geist (déjà chargée), chiffres tabulaires ; montants héros en 800.
 - **Ton** : accueil personnalisé (« Bonjour » + moment de la journée), micro-textes
-  chaleureux, mais sobres (pas d'emoji dans l'UI sauf le 👋 du bonjour).
+  chaleureux, mais sobres.
 - Tous les tokens sont des variables CSS dans `globals.css` (`@theme`), utilisées par les
   primitives `src/components/ui/*` qui sont restylées (pas de nouvelle dépendance).
 
@@ -160,6 +160,6 @@ Fond dégradé doux, carte blanche centrée, logo ; logique inchangée.
 
 ## 8. Hors périmètre
 
-Emojis dans les données de catégories, nouvelles fonctionnalités métier, PWA/installation
+Emojis (exclus partout), nouvelles fonctionnalités métier, PWA/installation
 mobile, refonte du contenu des Réglages, changement des API existantes (hors nouvelle
 route d'analyse), personnalisation du thème par l'utilisateur.
