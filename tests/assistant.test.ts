@@ -37,7 +37,13 @@ function req(url: string, init?: RequestInit) {
 
 const json = { "Content-Type": "application/json" };
 
-type Turn = { texts: string[]; stop?: Anthropic.Message["stop_reason"]; gate?: Promise<void>; error?: unknown };
+type Turn = {
+  texts: string[];
+  stop?: Anthropic.Message["stop_reason"];
+  gate?: Promise<void>;
+  error?: unknown;
+  onFinal?: () => void;
+};
 
 /** Client simulé : chaque appel à `stream` consomme le tour suivant. */
 function fakeAi(turns: Turn[]) {
@@ -55,7 +61,10 @@ function fakeAi(turns: Turn[]) {
         }
         if (opts?.signal?.aborted) throw new Anthropic.APIUserAbortError();
       },
-      finalMessage: async () => ({ stop_reason: turn.stop ?? "end_turn", content: [] }),
+      finalMessage: async () => {
+        turn.onFinal?.();
+        return { stop_reason: turn.stop ?? "end_turn", content: [] };
+      },
     };
   });
   const ai = { client: { messages: { stream } } as unknown as Anthropic, model: "claude-opus-5-5" } satisfies Ai;
@@ -105,6 +114,41 @@ describe("withGenerationLock", () => {
     const next = withGenerationLock(async () => 42);
     await expect(failed).rejects.toThrow("boom");
     expect(await next).toBe(42);
+  });
+});
+
+describe("état partagé entre exemplaires du module", () => {
+  it("registre des canaux et verrou communs après rechargement des modules", async () => {
+    vi.resetModules();
+    const d1 = await import("@/lib/assistant/dispatch");
+    const l1 = await import("@/lib/assistant/lock");
+    vi.resetModules();
+    const d2 = await import("@/lib/assistant/dispatch");
+    const l2 = await import("@/lib/assistant/lock");
+    expect(d2).not.toBe(d1);
+
+    const db = freshDb();
+    const m = addMessage(db, { role: "assistant", kind: "alert", content: "x", source: "system" });
+    const send = vi.fn(async () => {});
+    cleanups.push(d1.registerChannel("shared-test", send));
+    await d2.dispatch(m);
+    expect(send).toHaveBeenCalledWith(m);
+
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const a = l1.withGenerationLock(async () => {
+      await gate;
+      order.push("a");
+    });
+    const b = l2.withGenerationLock(async () => {
+      order.push("b");
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(order).toEqual([]);
+    release();
+    await Promise.all([a, b]);
+    expect(order).toEqual(["a", "b"]);
   });
 });
 
@@ -282,6 +326,15 @@ describe("respond", () => {
     expect(listMessages(db)).toHaveLength(before);
   });
 
+  it("annulation après une fin normale → réponse complète, sans « (interrompu) »", async () => {
+    const db = freshDb();
+    userMessage(db, "Q");
+    const controller = new AbortController();
+    const { ai } = fakeAi([{ texts: ["Réponse complète"], onFinal: () => controller.abort() }]);
+    const m = await respond(db, { ai, source: "app", signal: controller.signal });
+    expect(m?.content).toBe("Réponse complète");
+  });
+
   it("modèle introuvable → réglage effacé + erreur française", async () => {
     const db = freshDb();
     setModelSetting(db, "claude-retired-1");
@@ -390,6 +443,23 @@ describe("routes du fil", () => {
     const events = await readAll(await postChat({ content: "Salut" }));
     expect(events).toEqual([{ type: "error", error: MODEL_UNAVAILABLE_MESSAGE }]);
     expect(getModelSetting(getDb())).toBeNull();
+  });
+
+  it("chat : divider inséré pendant l'attente du verrou → événement error « Aucun message à traiter », sans journal", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stream = vi.spyOn(Anthropic.Messages.prototype, "stream");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const held = withGenerationLock(() => gate);
+    const res = await postChat({ content: "Salut" });
+    const body = res.text();
+    addMessage(getDb(), { role: "divider", kind: "divider", content: "", source: "app" });
+    release();
+    await held;
+    expect(decodeSse(await body).events).toEqual([{ type: "error", error: "Aucun message à traiter" }]);
+    expect(log).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
   });
 
   it("GET /api/messages : pagination et validation", async () => {

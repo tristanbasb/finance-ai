@@ -74,7 +74,12 @@ export function respond(
     let aborted = false;
     try {
       for await (const event of runChat({ ai, db, messages: context, signal, today })) {
+        // `done` : génération terminée normalement, même si l'annulation arrive ensuite.
         if (event.type === "done") continue;
+        if (signal?.aborted) {
+          aborted = true;
+          break;
+        }
         if (event.type === "text") text += event.text;
         onEvent?.(event);
       }
@@ -85,7 +90,6 @@ export function respond(
         throw new ModelUnavailableError();
       } else throw err;
     }
-    if (signal?.aborted) aborted = true;
 
     let content: string;
     if (aborted) {

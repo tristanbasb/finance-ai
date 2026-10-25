@@ -2,7 +2,10 @@ import type { Message } from "@/lib/queries/messages";
 
 export type ChannelSend = (m: Message) => Promise<void>;
 
-const channels = new Map<string, ChannelSend>();
+// Registre porté par `globalThis` : partagé entre les exemplaires du module que Next.js peut
+// charger séparément (instrumentation, où démarre le bot, et routes).
+const g = globalThis as typeof globalThis & { __financeAiChannels?: Map<string, ChannelSend> };
+const channels: Map<string, ChannelSend> = (g.__financeAiChannels ??= new Map());
 
 /**
  * Inscrit un canal de diffusion (ex. `telegram`). Un même nom remplace l'inscription précédente.

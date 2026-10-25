@@ -1,4 +1,4 @@
-import { readJson } from "@/lib/api";
+import { BadRequestError, readJson } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { aiErrorInfo, isAbortError, requireAi } from "@/lib/ai/client";
 import { chatRequest, encodeSse } from "@/lib/ai/chat";
@@ -59,7 +59,8 @@ export const POST = withAiErrors(async (req: Request) => {
         // Rien à enregistrer (message déjà répondu par une génération précédente) : fin du flux.
         if (!saved) send(encodeSse({ type: "done" }));
       } catch (err) {
-        if (err instanceof ModelUnavailableError) {
+        // Erreurs attendues (modèle retiré, plus rien à traiter) : message tel quel, sans journal.
+        if (err instanceof ModelUnavailableError || err instanceof BadRequestError) {
           send(encodeSse({ type: "error", error: err.message }));
         } else if (!isAbortError(err) && !upstream.signal.aborted) {
           const info = aiErrorInfo(err);
