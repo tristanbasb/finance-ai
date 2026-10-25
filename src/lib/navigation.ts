@@ -49,8 +49,12 @@ export function isColumnCollapsed(stored: string | null): boolean {
   return stored === "collapsed";
 }
 
-/** Largeur minimale (px) à partir de laquelle la colonne Claude existe (Tailwind `xl`). */
-export const CLAUDE_COLUMN_MIN_WIDTH = 1280;
+/**
+ * Requête média de la colonne Claude, partagée à l'identique par le CSS (`globals.css`, vérifié
+ * par un test) et par `matchMedia` : CSS et JS basculent toujours ensemble, quelle que soit la
+ * taille de police par défaut du navigateur (80rem = 1280 px à 16 px, comme Tailwind `xl`).
+ */
+export const CLAUDE_COLUMN_MEDIA = "(min-width: 80rem)";
 
 /** La colonne Claude est affichée : grand écran, non repliée, hors page Assistant. */
 export function showClaudeColumn({

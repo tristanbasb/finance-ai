@@ -43,7 +43,10 @@ function Tab({ item, active }: { item: NavItem; active: boolean }) {
 export function BottomBar() {
   const pathname = usePathname();
   const { open } = useQuickAdd();
-  const [first, second, third, fourth] = NAV_ITEMS;
+  // Le « + » s'insère au milieu des rubriques.
+  const half = Math.ceil(NAV_ITEMS.length / 2);
+  const tabs = (items: readonly NavItem[]) =>
+    items.map((item) => <Tab key={item.href} item={item} active={isActive(pathname, item.href)} />);
 
   return (
     <nav
@@ -51,8 +54,7 @@ export function BottomBar() {
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
     >
       <ul className="mx-auto grid h-[4.5rem] max-w-md grid-cols-5">
-        <Tab item={first} active={isActive(pathname, first.href)} />
-        <Tab item={second} active={isActive(pathname, second.href)} />
+        {tabs(NAV_ITEMS.slice(0, half))}
         <li className="flex items-start justify-center">
           <button
             type="button"
@@ -70,8 +72,7 @@ export function BottomBar() {
             <Plus aria-hidden className="size-7" strokeWidth={2.4} />
           </button>
         </li>
-        <Tab item={third} active={isActive(pathname, third.href)} />
-        <Tab item={fourth} active={isActive(pathname, fourth.href)} />
+        {tabs(NAV_ITEMS.slice(half))}
       </ul>
     </nav>
   );

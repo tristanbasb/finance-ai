@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  CLAUDE_COLUMN_MEDIA,
   greeting,
   headerTitle,
   isActive,
@@ -84,5 +87,15 @@ describe("colonne Claude", () => {
     expect(showClaudeColumn({ wide: false, collapsed: false, pathname: "/" })).toBe(false);
     expect(showClaudeColumn({ wide: true, collapsed: true, pathname: "/" })).toBe(false);
     expect(showClaudeColumn({ wide: true, collapsed: false, pathname: "/assistant" })).toBe(false);
+  });
+});
+
+describe("point de rupture de la colonne Claude", () => {
+  it("est la même requête média dans le CSS et dans matchMedia", () => {
+    const css = readFileSync(fileURLToPath(new URL("../src/app/globals.css", import.meta.url)), "utf8");
+    // Bloc des règles de la colonne (de `.claude-column,` à la fin du fichier) : une seule requête.
+    const block = css.slice(css.indexOf(".claude-column,"));
+    const queries = [...block.matchAll(/@media\s+([^{]+?)\s*\{/g)].map((m) => m[1]);
+    expect(queries).toEqual([CLAUDE_COLUMN_MEDIA]);
   });
 });

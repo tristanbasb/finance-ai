@@ -207,7 +207,8 @@
   display: none;
 }
 
-@media (width >= 80rem) {
+/* Même requête que `CLAUDE_COLUMN_MEDIA` (src/lib/navigation.ts) : ne pas la modifier seule. */
+@media (min-width: 80rem) {
   html:not([data-claude-column="collapsed"]) .shell-claude {
     --claude-column-width: 22.5rem;
   }

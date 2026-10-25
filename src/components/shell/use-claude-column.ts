@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import { CLAUDE_COLUMN_KEY, CLAUDE_COLUMN_MIN_WIDTH, isColumnCollapsed } from "@/lib/navigation";
+import { CLAUDE_COLUMN_KEY, CLAUDE_COLUMN_MEDIA, isColumnCollapsed } from "@/lib/navigation";
 
 const CHANGE_EVENT = "finance-ai:claude-column";
 
@@ -51,7 +51,7 @@ export function useClaudeColumnCollapsed(): [boolean, (collapsed: boolean) => vo
   return [collapsed, setCollapsed];
 }
 
-const WIDE_QUERY = `(min-width: ${CLAUDE_COLUMN_MIN_WIDTH}px)`;
+const WIDE_QUERY = CLAUDE_COLUMN_MEDIA;
 
 function subscribeWide(onChange: () => void): () => void {
   const mq = window.matchMedia(WIDE_QUERY);
