@@ -1,6 +1,7 @@
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { requireAi, type Ai } from "./client";
+import { modelSupports } from "./models";
 
 export const MAX_LABELS = 500;
 
@@ -46,7 +47,10 @@ export async function categorize(
     model: ai.model,
     max_tokens: 16000,
     system: SYSTEM,
-    output_config: { effort: "low", format: zodOutputFormat(output) },
+    output_config: {
+      ...(modelSupports(ai.model, "effort") ? { effort: "low" as const } : {}),
+      format: zodOutputFormat(output),
+    },
     messages: [
       {
         role: "user",

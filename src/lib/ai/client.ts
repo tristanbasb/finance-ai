@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getDb, type Db } from "@/lib/db";
+import { getModelSetting } from "@/lib/settings";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
 
@@ -24,9 +26,23 @@ export class AiOutputError extends Error {
 
 let cached: { key: string; client: Anthropic } | undefined;
 
-/** Modèle configuré (`CLAUDE_MODEL`, sinon le modèle par défaut), lu à chaque appel. */
+/** Modèle d'environnement (`CLAUDE_MODEL`, sinon le modèle par défaut), lu à chaque appel. */
 export function aiModel(): string {
   return process.env.CLAUDE_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+/**
+ * Modèle effectif : réglage de l'application > `CLAUDE_MODEL` > défaut. Une base illisible ou non
+ * migrée n'est jamais une erreur (retour à l'environnement / défaut).
+ */
+export function effectiveModel(db?: Db): string {
+  try {
+    const chosen = getModelSetting(db ?? getDb());
+    if (chosen) return chosen;
+  } catch {
+    // Base absente ou pas encore migrée : on retombe sur l'environnement.
+  }
+  return aiModel();
 }
 
 /**
@@ -34,18 +50,27 @@ export function aiModel(): string {
  * l'import ni au build) ; le client est réutilisé tant que la clé ne change pas.
  * `ANTHROPIC_BASE_URL` est pris en compte par le SDK.
  */
-export function getAi(): Ai | null {
+export function getAi(db?: Db): Ai | null {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) return null;
   if (!cached || cached.key !== key) cached = { key, client: new Anthropic({ apiKey: key }) };
-  return { client: cached.client, model: aiModel() };
+  return { client: cached.client, model: effectiveModel(db) };
 }
 
 /** Comme `getAi`, mais lève `AiDisabledError` sans clé. */
-export function requireAi(): Ai {
-  const ai = getAi();
+export function requireAi(db?: Db): Ai {
+  const ai = getAi(db);
   if (!ai) throw new AiDisabledError();
   return ai;
+}
+
+/** Vrai si l'API répond 404 `not_found_error` (modèle inexistant ou retiré). */
+export function isModelNotFound(err: unknown): boolean {
+  return (
+    err instanceof Anthropic.APIError &&
+    err.status === 404 &&
+    (err.type === undefined || err.type === null || err.type === "not_found_error")
+  );
 }
 
 /** Vrai si l'erreur vient d'une annulation (client parti, bouton « Arrêter »). */
