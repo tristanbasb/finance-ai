@@ -219,6 +219,24 @@ describe("outils", () => {
     expect(overview.current_month).toMatchObject({ income: 2500, expenses: -908.49 });
   });
 
+  it("get_overview : chaque compte donne espèces, positions et total ; le patrimoine net est la somme des totaux", async () => {
+    const db = freshDb();
+    const acc = db.select().from(accounts).get()!.id;
+    db.update(accounts).set({ initialBalance: 72_986 }).where(eq(accounts.id, acc)).run();
+    db.insert(holdings)
+      .values({ accountId: acc, symbol: "CW8", name: "MSCI World", assetType: "etf", quantity: 2, avgPrice: 38_508 })
+      .run();
+    const overview = (await runTool(db, "get_overview", {}, "2026-10-24")) as {
+      net_worth: number;
+      accounts: { cash_balance: number; investments: number; total: number }[];
+    };
+    const account = overview.accounts.find((a) => a.total !== 0)!;
+    expect(account).toMatchObject({ cash_balance: 729.86, investments: 770.16, total: 1500.02 });
+    expect(overview.accounts[0]).not.toHaveProperty("balance");
+    const sum = overview.accounts.reduce((s, a) => s + a.total, 0);
+    expect(overview.net_worth).toBeCloseTo(sum, 2);
+  });
+
   it("get_holdings et get_goals", async () => {
     const db = freshDb();
     const acc = db.select().from(accounts).get()!.id;

@@ -53,7 +53,10 @@ export const aiTools: Anthropic.Tool[] = [
     description:
       "Vue d'ensemble actuelle : patrimoine net, liquidités, investissements, soldes des comptes, " +
       "revenus/dépenses et taux d'épargne du mois en cours, budgets mensuels et consommation, " +
-      "et la liste de toutes les catégories (id, nom, sens expense/income, budget mensuel ou null). Montants en euros.",
+      "et la liste de toutes les catégories (id, nom, sens expense/income, budget mensuel ou null). Montants en euros. " +
+      "Pour chaque compte : `cash_balance` (espèces : solde initial + opérations), `investments` (valeur des positions " +
+      "rattachées) et `total` = cash_balance + investments. `net_worth` = somme des `total` = `cash` + `investments` : " +
+      "pour détailler le patrimoine, additionnez les `total`, jamais les seuls `cash_balance`.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -136,7 +139,14 @@ function getOverviewTool(db: Db, today: string) {
     investments: eur(o.investments),
     accounts: listAccountsWithBalances(db)
       .filter((a) => !a.archived)
-      .map((a) => ({ id: a.id, name: a.name, type: a.type, balance: eur(a.balance), investments: eur(a.investmentsValue) })),
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        cash_balance: eur(a.balance),
+        investments: eur(a.investmentsValue),
+        total: eur(a.total),
+      })),
     current_month: {
       month: today.slice(0, 7),
       income: eur(o.month.income),
