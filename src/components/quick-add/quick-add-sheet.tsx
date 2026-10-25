@@ -45,7 +45,7 @@ export type QuickAddSheetProps = {
   onAdded: () => void;
 };
 
-const UNAVAILABLE = "L'analyse par Claude n'est pas disponible. Saisis l'opération à la main.";
+const UNAVAILABLE = "L'analyse par Claude n'est pas disponible. Saisissez l'opération à la main.";
 
 /**
  * Feuille « Nouvelle opération » : phrase libre analysée par Claude (si l'IA est active) avec
@@ -75,6 +75,7 @@ export function QuickAddSheet({
   const [values, setValues] = useState<TransactionFormValues | null>(null);
   const [errors, setErrors] = useState<TransactionFormErrors>({});
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [restarted, setRestarted] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -121,7 +122,7 @@ export function QuickAddSheet({
   async function analyze() {
     const trimmed = text.trim();
     if (trimmed === "") {
-      setPhraseError("Écris une opération, par exemple « 12,50 resto midi ».");
+      setPhraseError("Écrivez une opération, par exemple « 12,50 resto midi ».");
       return;
     }
     setPhraseError(null);
@@ -142,6 +143,7 @@ export function QuickAddSheet({
       setPhrase(trimmed);
       if (res.ok) {
         const proposal = (await res.json()) as Proposal;
+        if (controller.signal.aborted) return;
         setValues(proposalToFormValues(proposal, defaults));
         setErrors({});
         setView("proposal");
@@ -152,8 +154,9 @@ export function QuickAddSheet({
           error?: string;
           partial?: Partial<Proposal>;
         } | null;
+        if (controller.signal.aborted) return;
         setValues(proposalToFormValues(body?.partial ?? {}, defaults));
-        goManual(`${body?.error ?? "Je n'ai pas trouvé de montant."} Complète le montant ci-dessous.`);
+        goManual(`${body?.error ?? "Je n'ai pas trouvé de montant."} Complétez le montant ci-dessous.`);
         return;
       }
       if (res.status === 503) {
@@ -161,19 +164,24 @@ export function QuickAddSheet({
         goManual(UNAVAILABLE);
         return;
       }
-      setAnalysisError(await errorMessage(res));
+      const message = await errorMessage(res);
+      if (controller.signal.aborted) return;
+      setAnalysisError(message);
       setView("error");
     } catch {
       if (controller.signal.aborted) return;
-      setAnalysisError("Le serveur est injoignable. Réessaie dans un instant.");
+      setAnalysisError("Le serveur est injoignable. Réessayez dans un instant.");
       setView("error");
     }
   }
 
   async function add() {
+    // Garde contre un double envoi (double clic, Entrée répétée) avant le rendu suivant.
+    if (savingRef.current) return;
     const result = validateTransactionForm(currentValues);
     setErrors(result.ok ? {} : result.errors);
     if (!result.ok) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const res = await fetch("/api/transactions", {
@@ -193,6 +201,7 @@ export function QuickAddSheet({
         description: "Le serveur est injoignable.",
       });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -252,7 +261,7 @@ export function QuickAddSheet({
     currentView === "analyzing"
       ? "Analyse de la phrase en cours…"
       : currentView === "proposal" && phrase
-        ? "Proposition prête. Vérifie les champs avant d'ajouter."
+        ? "Proposition prête. Vérifiez les champs avant d'ajouter."
         : "";
 
   return (
@@ -260,7 +269,7 @@ export function QuickAddSheet({
       open={open}
       onClose={onClose}
       title="Nouvelle opération"
-      description={data && phraseMode ? "Écris-la en une phrase, Claude remplit les champs." : undefined}
+      description={data && phraseMode ? "Écrivez-la en une phrase, Claude remplit les champs." : undefined}
       footer={footer}
     >
       <p aria-live="polite" className="sr-only">
@@ -304,7 +313,7 @@ export function QuickAddSheet({
                 selectOnFocus={restarted}
               />
               {currentView === "analyzing" && <ProposalSkeleton />}
-              {currentView === "error" && analysisError && <AnalysisError message={analysisError} />}
+              {currentView === "error" && analysisError && <AnalysisError message={analysisError} focusOnMount />}
             </>
           )}
 
@@ -343,23 +352,17 @@ export function QuickAddSheet({
           >
             {showModeLink &&
               (currentView === "manual" ? (
-                <Button variant="ghost" size="sm" className="-ml-3" onClick={goPhrase}>
+                <Button variant="ghost" onClick={goPhrase} disabled={saving}>
                   <Sparkles aria-hidden />
                   Écrire une phrase
                 </Button>
               ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-3"
-                  onClick={() => goManual()}
-                  disabled={currentView === "analyzing"}
-                >
+                <Button variant="ghost" onClick={() => goManual()} disabled={currentView === "analyzing" || saving}>
                   <PenLine aria-hidden />
                   Saisir à la main
                 </Button>
               ))}
-            <Button variant="ghost" size="sm" className="-mr-3" onClick={onImport}>
+            <Button variant="ghost" onClick={onImport} disabled={saving}>
               <FileUp aria-hidden />
               Importer un relevé CSV
             </Button>

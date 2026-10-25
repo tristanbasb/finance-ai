@@ -79,7 +79,7 @@ export function KindToggle({
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(item.kind)}
             className={cn(
-              "h-8 rounded-md text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring pointer-coarse:h-9",
+              "h-8 rounded-md text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring pointer-coarse:h-11",
               active ? "bg-surface text-fg shadow-[0_0_0_1px_var(--border)]" : "text-muted hover:text-fg",
             )}
           >

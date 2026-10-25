@@ -29,7 +29,7 @@ export type PhraseInputProps = {
   selectOnFocus?: boolean;
 };
 
-/** Zone « Écris comme tu parles… » + exemples ; Entrée analyse, Maj+Entrée va à la ligne. */
+/** Zone « Écrivez comme vous parlez… » + exemples ; Entrée analyse, Maj+Entrée va à la ligne. */
 export function PhraseInput({
   id,
   text,
@@ -96,7 +96,7 @@ export function PhraseInput({
             readOnly={busy}
             onChange={(e) => onTextChange(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Écris comme tu parles…"
+            placeholder="Écrivez comme vous parlez…"
             autoComplete="off"
             enterKeyHint="send"
             aria-invalid={error ? true : undefined}
@@ -106,7 +106,7 @@ export function PhraseInput({
         </div>
       </Field>
       <p id={hintId} className="text-[13px] text-muted">
-        Montant, objet, date si besoin : Claude remplit le reste et tu vérifies avant d&apos;ajouter.
+        Montant, objet, date si besoin : Claude remplit le reste et vous vérifiez avant d&apos;ajouter.
       </p>
       <div role="group" aria-label="Exemples" className="flex flex-wrap gap-2">
         {EXAMPLES.map((example) => (
@@ -136,9 +136,19 @@ export function ProposalSkeleton() {
 }
 
 /** Erreur d'analyse (délai dépassé, serveur…). Les actions sont dans le pied de la feuille. */
-export function AnalysisError({ message }: { message: string }) {
+export function AnalysisError({ message, focusOnMount = false }: { message: string; focusOnMount?: boolean }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  // Le bouton « Analyser » a disparu : le focus passe sur le message (lu par les lecteurs d'écran).
+  useEffect(() => {
+    if (focusOnMount) ref.current?.focus();
+  }, [focusOnMount]);
   return (
-    <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl bg-danger-soft px-3.5 py-2.5 text-[13px] text-fg">
+    <p
+      ref={ref}
+      role="alert"
+      tabIndex={focusOnMount ? -1 : undefined}
+      className="mt-4 flex items-start gap-2 rounded-xl bg-danger-soft px-3.5 py-2.5 text-[13px] text-fg focus:outline-none"
+    >
       <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-danger" />
       {message}
     </p>
@@ -208,7 +218,7 @@ export function ProposalCard({
         <p className="flex items-start gap-2 text-[13px] text-muted">
           <Sparkles aria-hidden className="mt-0.5 size-4 shrink-0 text-brand" />
           <span>
-            Proposition pour <q className="font-medium text-fg">{phrase}</q>. Vérifie, puis ajoute.
+            Proposition pour <q className="font-medium text-fg">{phrase}</q>. Vérifiez, puis ajoutez.
           </span>
         </p>
       )}
