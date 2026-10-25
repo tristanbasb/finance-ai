@@ -23,9 +23,10 @@ function toNumber(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Seuil des dépenses inhabituelles en € : nombre ≥ 0, sinon null. */
+/** Seuil des dépenses inhabituelles en € : nombre ≥ 1, sinon null. */
 export function parseUnusualMinEur(raw: string): number | null {
-  return toNumber(raw);
+  const n = toNumber(raw);
+  return n !== null && n >= 1 ? n : null;
 }
 
 /** Seuil des variations en % : nombre > 0, sinon null. */

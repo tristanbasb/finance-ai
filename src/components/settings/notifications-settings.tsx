@@ -252,7 +252,7 @@ export function NotificationsSettings() {
                     suffix="€"
                     value={alerts.unusualMinEur}
                     parse={parseUnusualMinEur}
-                    invalidMessage="Saisissez un montant supérieur ou égal à 0."
+                    invalidMessage="Saisissez un montant d'au moins 1 €."
                     onCommit={(n) => patchAlerts({ unusualMinEur: n })}
                   />
                 </div>

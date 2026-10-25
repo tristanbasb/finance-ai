@@ -4,7 +4,7 @@ import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { settings } from "@/lib/db/schema";
 import {
-  alertPrefs, DEFAULT_ALERT_PREFS, DEFAULT_DIGEST_PREFS, digestPrefs, getModelSetting, getSetting,
+  alertPrefs, alertPrefsSchema, DEFAULT_ALERT_PREFS, DEFAULT_DIGEST_PREFS, digestPrefs, getModelSetting, getSetting,
   setModelSetting, setSetting,
 } from "@/lib/settings";
 
@@ -48,6 +48,12 @@ describe("réglages", () => {
     expect(getSetting(db, "k", z.object({ a: z.number() }), { a: 0 })).toEqual({ a: 2 });
     setSetting(db, "alerts", { budget: false });
     expect(alertPrefs(db)).toEqual({ ...DEFAULT_ALERT_PREFS, budget: false });
+  });
+
+  it("seuil des dépenses inhabituelles : au moins 1 €", () => {
+    expect(alertPrefsSchema.safeParse({ unusualMinEur: 0 }).success).toBe(false);
+    expect(alertPrefsSchema.safeParse({ unusualMinEur: 0.5 }).success).toBe(false);
+    expect(alertPrefsSchema.parse({ unusualMinEur: 1 }).unusualMinEur).toBe(1);
   });
 
   it("réglage du modèle", () => {

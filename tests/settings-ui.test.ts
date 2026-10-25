@@ -33,14 +33,16 @@ describe("formatCountdown", () => {
 });
 
 describe("parseUnusualMinEur", () => {
-  it("accepte 0 et les décimaux (virgule ou point)", () => {
-    expect(parseUnusualMinEur("0")).toBe(0);
+  it("accepte les montants ≥ 1 et les décimaux (virgule ou point)", () => {
+    expect(parseUnusualMinEur("1")).toBe(1);
     expect(parseUnusualMinEur(" 150 ")).toBe(150);
     expect(parseUnusualMinEur("12,5")).toBe(12.5);
     expect(parseUnusualMinEur("12.5")).toBe(12.5);
   });
-  it("refuse vide, négatif et texte", () => {
+  it("refuse vide, négatif, inférieur à 1 et texte", () => {
     expect(parseUnusualMinEur("")).toBeNull();
+    expect(parseUnusualMinEur("0")).toBeNull();
+    expect(parseUnusualMinEur("0,5")).toBeNull();
     expect(parseUnusualMinEur("-1")).toBeNull();
     expect(parseUnusualMinEur("abc")).toBeNull();
   });

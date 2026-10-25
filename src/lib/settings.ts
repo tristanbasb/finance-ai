@@ -7,7 +7,7 @@ export const alertPrefsSchema = z.object({
   enabled: z.boolean().default(true),
   budget: z.boolean().default(true),
   unusualExpense: z.boolean().default(true),
-  unusualMinEur: z.number().min(0).default(100),
+  unusualMinEur: z.number().min(1).default(100),
   priceMove: z.boolean().default(true),
   priceMovePct: z.number().positive().default(5),
   goalReached: z.boolean().default(true),

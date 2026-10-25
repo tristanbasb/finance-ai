@@ -352,6 +352,7 @@ describe("routes de réglages", () => {
     const res = await put(putAlerts, { unusualMinEur: 50 });
     expect(await res.json()).toMatchObject({ enabled: false, unusualMinEur: 50, budget: true });
     expect((await put(putAlerts, { unusualMinEur: "x" })).status).toBe(400);
+    expect((await put(putAlerts, { unusualMinEur: 0 })).status).toBe(400);
   });
 
   it("alertes : défauts, fusion partielle, validation", async () => {
