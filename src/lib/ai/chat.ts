@@ -11,7 +11,6 @@ export { encodeSse, type ChatEvent };
 
 export const MAX_TOOL_ITERATIONS = 8;
 
-/** Corps de `POST /api/ai/chat` : le nouveau message de l'utilisateur. */
 /**
  * Corps de `POST /api/ai/chat` : `{ content }` (nouvelle question, enregistrée avant la réponse)
  * ou `{ retry: true }` (relance après une erreur : répond aux questions déjà enregistrées et
