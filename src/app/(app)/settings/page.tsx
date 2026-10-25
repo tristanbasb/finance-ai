@@ -54,7 +54,7 @@ export default function SettingsPage() {
       <NotificationsSettings />
       <TelegramSettings />
 
-      <Card id="donnees" className="scroll-mt-32">
+      <Card id="donnees" className="scroll-mt-section">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database aria-hidden className="size-4 text-muted" />
@@ -75,7 +75,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card id="securite" className="scroll-mt-32">
+      <Card id="securite" className="scroll-mt-section">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <KeyRound aria-hidden className="size-4 text-muted" />

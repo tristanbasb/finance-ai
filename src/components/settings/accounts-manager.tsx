@@ -50,7 +50,7 @@ export function AccountsManager({ accounts }: { accounts: AccountRow[] }) {
   }
 
   return (
-    <Card id="comptes" className="scroll-mt-32">
+    <Card id="comptes" className="scroll-mt-section">
       <CardHeader
         action={
           <Button size="sm" onClick={openAdd}>

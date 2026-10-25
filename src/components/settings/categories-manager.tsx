@@ -24,7 +24,7 @@ export function CategoriesManager({ categories }: { categories: CategoryRow[] })
   const incomes = categories.filter((c) => c.kind === "income");
 
   return (
-    <Card id="categories" className="scroll-mt-32">
+    <Card id="categories" className="scroll-mt-section">
       <CardHeader
         action={
           <Button size="sm" onClick={() => openAdd("expense")}>

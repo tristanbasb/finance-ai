@@ -23,8 +23,8 @@ import { useClaudeColumnCollapsed, useWideScreen } from "./use-claude-column";
  */
 function ContentHeader({ onExpand, showTitle }: { onExpand: () => void; showTitle: boolean }) {
   return (
-    <header className="sticky top-0 z-20 hidden bg-bg/85 backdrop-blur-md md:block">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-2 px-6 md:px-10">
+    <header className="sticky top-0 z-30 hidden bg-bg/85 backdrop-blur-md md:block">
+      <div className="mx-auto flex h-(--content-header-h) w-full max-w-6xl items-center gap-2 px-6 md:px-10">
         {showTitle ? (
           <HeaderTitle className="mr-auto min-w-0 text-sm font-semibold text-muted" />
         ) : (

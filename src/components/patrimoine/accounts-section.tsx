@@ -33,9 +33,9 @@ const GROUPS: { title: string; types: PatrimoineAccount["type"][] }[] = [
 /** Section « Comptes » : cartes pastel groupées par nature de compte. */
 export function AccountsSection({ accounts }: { accounts: PatrimoineAccount[] }) {
   return (
-    <section id="comptes" aria-labelledby="patrimoine-comptes" className="scroll-mt-32 space-y-4">
+    <section id="comptes" aria-labelledby="patrimoine-comptes" className="scroll-mt-section space-y-4">
       {/* Alias d'ancre : l'ancienne rubrique Épargne. */}
-      <span id="epargne" aria-hidden className="scroll-mt-32" />
+      <span id="epargne" aria-hidden className="scroll-mt-section" />
       <div className="flex items-center justify-between gap-3">
         <h2 id="patrimoine-comptes" className="px-1 text-xl font-semibold tracking-[-0.02em] text-fg">
           Comptes

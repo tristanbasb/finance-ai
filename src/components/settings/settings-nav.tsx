@@ -8,8 +8,8 @@ import { activeSection, SETTINGS_SECTIONS, type SettingsSectionId } from "@/lib/
 const THRESHOLD = 140;
 
 /**
- * Sommaire des Réglages : pastilles collantes (sous l'en-tête mobile), défilables à
- * l'horizontale, qui mènent à chaque carte et suivent la rubrique visible.
+ * Sommaire des Réglages : pastilles collantes (sous l'en-tête mobile, puis sous l'en-tête de
+ * contenu), défilables à l'horizontale, qui mènent à chaque carte et suivent la rubrique visible.
  */
 export function SettingsNav() {
   const [active, setActive] = useState<SettingsSectionId>(SETTINGS_SECTIONS[0].id);
@@ -46,7 +46,7 @@ export function SettingsNav() {
     <nav
       ref={navRef}
       aria-label="Sommaire des réglages"
-      className="sticky top-[var(--mobile-header-h)] z-20 -mx-4 flex gap-2 overflow-x-auto border-b border-border bg-bg/85 px-4 py-2 backdrop-blur-md [scrollbar-width:none] sm:-mx-6 sm:px-6 md:top-0 md:mx-0 md:rounded-full md:border md:px-2"
+      className="sticky top-[var(--mobile-header-h)] z-20 -mx-4 flex gap-2 overflow-x-auto border-b border-border bg-bg/85 px-4 py-2 backdrop-blur-md [scrollbar-width:none] sm:-mx-6 sm:px-6 md:top-[var(--content-header-h)] md:mx-0 md:rounded-full md:border md:px-2"
     >
       {SETTINGS_SECTIONS.map((s) => (
         <Chip

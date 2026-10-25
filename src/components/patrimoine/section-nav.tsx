@@ -39,7 +39,7 @@ export function SectionNav({ initialSection }: { initialSection: PatrimoineSecti
   return (
     <nav
       aria-label="Rubriques du patrimoine"
-      className="sticky top-[var(--mobile-header-h)] z-20 -mx-4 flex gap-2 overflow-x-auto border-b border-border bg-bg/85 px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6 md:top-0 md:mx-0 md:rounded-full md:border md:px-2"
+      className="sticky top-[var(--mobile-header-h)] z-20 -mx-4 flex gap-2 overflow-x-auto border-b border-border bg-bg/85 px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6 md:top-[var(--content-header-h)] md:mx-0 md:rounded-full md:border md:px-2"
     >
       {PATRIMOINE_SECTIONS.map((s) => (
         <Chip

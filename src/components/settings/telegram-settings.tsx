@@ -214,7 +214,7 @@ export function TelegramSettings() {
   const bot = status?.botUsername ? `@${status.botUsername}` : "votre bot";
 
   return (
-    <Card id="telegram" className="scroll-mt-32">
+    <Card id="telegram" className="scroll-mt-section">
       <CardHeader
         action={
           status?.linked ? (

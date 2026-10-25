@@ -38,7 +38,7 @@ export function GoalsSection({ goalAccounts, goals, today }: GoalsSectionProps) 
   );
 
   return (
-    <section id="objectifs" aria-labelledby="patrimoine-objectifs" className="scroll-mt-32 space-y-4">
+    <section id="objectifs" aria-labelledby="patrimoine-objectifs" className="scroll-mt-section space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-0.5 px-1">
           <h2 id="patrimoine-objectifs" className="text-xl font-semibold tracking-[-0.02em] text-fg">

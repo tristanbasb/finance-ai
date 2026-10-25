@@ -34,7 +34,7 @@ export function AiStatus() {
   }, []);
 
   return (
-    <Card id="ia" className="scroll-mt-32">
+    <Card id="ia" className="scroll-mt-section">
       <CardHeader
         action={
           state.kind === "enabled" ? (

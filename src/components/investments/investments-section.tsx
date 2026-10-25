@@ -99,7 +99,7 @@ export function InvestmentsSection({ groups, archivedGroups = [], accounts }: In
   }
 
   return (
-    <section id="investissements" aria-labelledby="patrimoine-investissements" className="scroll-mt-32 space-y-4">
+    <section id="investissements" aria-labelledby="patrimoine-investissements" className="scroll-mt-section space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-0.5 px-1">
           <h2 id="patrimoine-investissements" className="text-xl font-semibold tracking-[-0.02em] text-fg">

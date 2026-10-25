@@ -194,7 +194,7 @@ export function NotificationsSettings() {
   const subDisabled = alerts !== null && !alerts.enabled;
 
   return (
-    <Card id="notifications" className="scroll-mt-32">
+    <Card id="notifications" className="scroll-mt-section">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell aria-hidden className="size-4 text-muted" />
