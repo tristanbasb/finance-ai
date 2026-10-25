@@ -81,7 +81,7 @@ export function DialogCloseButton({ onClose, className }: { onClose: () => void;
       onClick={onClose}
       aria-label="Fermer"
       className={cn(
-        "absolute right-4 inline-flex size-9 items-center justify-center rounded-full bg-surface-2 text-muted transition-colors hover:bg-border hover:text-fg",
+        "absolute right-4 inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-full bg-surface-2 text-muted transition-colors hover:bg-border hover:text-fg",
         className ?? "top-4",
       )}
     >

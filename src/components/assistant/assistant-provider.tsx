@@ -10,7 +10,7 @@ import { useUnread, type UnreadState } from "./use-unread";
 export const ASSISTANT_PATH = "/assistant";
 
 export type AssistantContextValue = {
-  /** Panneau latéral ouvert. */
+  /** Panneau latéral ouvert (jamais quand la colonne Claude est affichée). */
   open: boolean;
   setOpen: (open: boolean) => void;
   /** Ouvre le fil (panneau, ou page Assistant si elle est affichée), centré sur `messageId`. */
@@ -20,6 +20,10 @@ export type AssistantContextValue = {
   clearFocus: () => void;
   unread: UnreadState;
   refreshUnread: () => Promise<void>;
+  /** Colonne Claude affichée (grand écran) : elle tient lieu de panneau. */
+  columnVisible: boolean;
+  /** Signalé par la colonne Claude à son affichage et à sa disparition. */
+  setColumnVisible: (visible: boolean) => void;
   /** Clé API configurée côté serveur (seule sa présence est connue du navigateur). */
   aiEnabled: boolean;
 };
@@ -38,18 +42,20 @@ export function AssistantProvider({ aiEnabled, children }: { aiEnabled: boolean;
   const onAssistantPage = pathname === ASSISTANT_PATH;
   const [openState, setOpenState] = useState(false);
   const [focusId, setFocusId] = useState<number | null>(null);
-  // Le panneau n'existe pas sur la page Assistant (le fil y est déjà affiché en entier).
-  const open = openState && !onAssistantPage;
+  const [columnVisible, setColumnVisibleState] = useState(false);
+  // Le panneau n'existe ni sur la page Assistant ni à côté de la colonne Claude (le fil y est
+  // déjà affiché).
+  const open = openState && !onAssistantPage && !columnVisible;
 
   // L'ancien historique local (avant le fil persistant) est abandonné : clé supprimée une fois.
   useEffect(() => {
     clearAssistantConversation();
   }, []);
 
-  const stateRef = useRef({ open, onAssistantPage });
+  const stateRef = useRef({ open, onAssistantPage, columnVisible });
   useEffect(() => {
-    stateRef.current = { open, onAssistantPage };
-  }, [open, onAssistantPage]);
+    stateRef.current = { open, onAssistantPage, columnVisible };
+  }, [open, onAssistantPage, columnVisible]);
 
   const setOpen = useCallback((next: boolean) => {
     setOpenState(next);
@@ -58,15 +64,22 @@ export function AssistantProvider({ aiEnabled, children }: { aiEnabled: boolean;
 
   const openAt = useCallback((messageId?: number) => {
     setFocusId(messageId ?? null);
-    if (!stateRef.current.onAssistantPage) setOpenState(true);
+    const { onAssistantPage: onPage, columnVisible: inColumn } = stateRef.current;
+    if (!onPage && !inColumn) setOpenState(true);
+  }, []);
+
+  const setColumnVisible = useCallback((visible: boolean) => {
+    setColumnVisibleState(visible);
+    // La colonne remplace le panneau : il ne doit pas réapparaître quand elle se replie.
+    if (visible) setOpenState(false);
   }, []);
 
   const clearFocus = useCallback(() => setFocusId(null), []);
 
   const onFresh = useCallback(
     (fresh: ThreadMessage[]) => {
-      const { open: isOpen, onAssistantPage: onPage } = stateRef.current;
-      if (isOpen || onPage) return;
+      const { open: isOpen, onAssistantPage: onPage, columnVisible: inColumn } = stateRef.current;
+      if (isOpen || onPage || inColumn) return;
       const last = fresh[fresh.length - 1];
       const others = fresh.length - 1;
       toast(others > 0 ? `${kindLabel(last.kind)} et ${others} autre${others > 1 ? "s" : ""} message${others > 1 ? "s" : ""}` : kindLabel(last.kind), {
@@ -81,8 +94,19 @@ export function AssistantProvider({ aiEnabled, children }: { aiEnabled: boolean;
   const { unread, refreshUnread } = useUnread(onFresh);
 
   const value = useMemo<AssistantContextValue>(
-    () => ({ open, setOpen, openAt, focusId, clearFocus, unread, refreshUnread, aiEnabled }),
-    [open, setOpen, openAt, focusId, clearFocus, unread, refreshUnread, aiEnabled],
+    () => ({
+      open,
+      setOpen,
+      openAt,
+      focusId,
+      clearFocus,
+      unread,
+      refreshUnread,
+      columnVisible,
+      setColumnVisible,
+      aiEnabled,
+    }),
+    [open, setOpen, openAt, focusId, clearFocus, unread, refreshUnread, columnVisible, setColumnVisible, aiEnabled],
   );
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;

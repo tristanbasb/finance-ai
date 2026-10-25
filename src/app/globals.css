@@ -195,3 +195,30 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Colonne Claude (≥ 1280 px) : visible sauf si elle est repliée (`<html data-claude-column=
+ * "collapsed">`, posé avant l'affichage par un script puis tenu à jour par React) ou hors d'une
+ * mise en page qui l'accueille (`.shell-claude`, absente sur la page Assistant). Le CSS seul
+ * décide de la mise en page, pour qu'elle soit juste dès la première image.
+ */
+.claude-column,
+.claude-expand {
+  display: none;
+}
+
+@media (width >= 80rem) {
+  html:not([data-claude-column="collapsed"]) .shell-claude {
+    --claude-column-width: 22.5rem;
+  }
+  html:not([data-claude-column="collapsed"]) .shell-claude .claude-column {
+    display: flex;
+  }
+  /* La bulle est inutile quand la colonne est affichée. */
+  html:not([data-claude-column="collapsed"]) .shell-claude [data-assistant-trigger] {
+    display: none;
+  }
+  html[data-claude-column="collapsed"] .shell-claude .claude-expand {
+    display: inline-flex;
+  }
+}

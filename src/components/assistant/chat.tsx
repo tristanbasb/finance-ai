@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Maximize2, SquarePen, X } from "lucide-react";
+import { Maximize2, PanelRightClose, Sparkles, SquarePen, X } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
@@ -24,17 +24,20 @@ const READ_BATCH_MS = 400;
 type Failure = { message: string; content: string; saved: boolean };
 
 /**
- * Conversation avec Claude (fil persistant + saisie), partagée par le panneau latéral et la page
- * Assistant. La réponse est générée et enregistrée côté serveur ; le flux SSE ne sert qu'à
+ * Conversation avec Claude (fil persistant + saisie), partagée par le panneau latéral, la colonne
+ * Claude (grand écran) et la page Assistant. La réponse est générée et enregistrée côté serveur ; le flux SSE ne sert qu'à
  * l'affichage en direct, et le fil est toujours rechargé à la fin.
  */
 export function AssistantConversation({
   variant,
   onClose,
+  onCollapse,
   titleId,
 }: {
-  variant: "panel" | "page";
+  variant: "panel" | "column" | "page";
   onClose?: () => void;
+  /** Colonne : la replier (la bulle et le panneau prennent le relais). */
+  onCollapse?: () => void;
   titleId?: string;
 }) {
   const { aiEnabled, focusId, clearFocus, refreshUnread, unread, setOpen } = useAssistant();
@@ -243,17 +246,18 @@ export function AssistantConversation({
     : null;
 
   const lastIsDivider = messages[messages.length - 1]?.role === "divider";
+  const compact = variant !== "page";
   const newConversationButton = (
     <Button
-      variant={variant === "panel" ? "ghost" : "secondary"}
-      size={variant === "panel" ? "icon" : "sm"}
+      variant={compact ? "ghost" : "secondary"}
+      size={compact ? "icon" : "sm"}
       onClick={() => void newConversation()}
       loading={creatingDivider}
       disabled={streaming || lastIsDivider || messages.length === 0}
       title="Claude repart de zéro (le fil reste affiché)"
     >
       {!creatingDivider && <SquarePen aria-hidden />}
-      <span className={variant === "panel" ? "sr-only" : undefined}>Nouvelle conversation</span>
+      <span className={compact ? "sr-only" : undefined}>Nouvelle conversation</span>
     </Button>
   );
 
@@ -269,13 +273,13 @@ export function AssistantConversation({
         onSeen={onSeen}
         onSuggestion={aiEnabled ? (q) => void send(q) : undefined}
         scrollSignal={scrollSignal}
-        className={cn("flex-1", variant === "panel" ? "px-4 py-5" : "px-4 py-5 sm:px-6")}
+        className={cn("flex-1", compact ? "px-4 py-5" : "px-4 py-5 sm:px-6")}
         innerClassName={variant === "page" ? "max-w-3xl" : undefined}
       />
       <div
         className={cn(
           "border-t border-border bg-surface px-4 pt-3",
-          variant === "panel" ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : "pb-3 sm:px-6",
+          variant === "panel" ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : variant === "column" ? "pb-3" : "pb-3 sm:px-6",
         )}
       >
         <Composer
@@ -293,10 +297,32 @@ export function AssistantConversation({
     </>
   );
 
+  if (variant === "column") {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <PanelHeader titleId={titleId} title="Claude">
+          {/* Largeur de colonne limitée : le sélecteur cède la place aux boutons. */}
+          <ModelSelect className="min-w-0 [&_select]:max-w-[9rem]" />
+          {newConversationButton}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onCollapse}
+            aria-label="Replier la colonne Claude"
+            title="Replier la colonne"
+          >
+            <PanelRightClose aria-hidden />
+          </Button>
+        </PanelHeader>
+        {body}
+      </div>
+    );
+  }
+
   if (variant === "panel") {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader titleId={titleId}>
+        <PanelHeader titleId={titleId} title="Assistant">
           <ModelSelect />
           {newConversationButton}
           {/* Plein écran : inutile sur mobile, où le panneau occupe déjà tout l'écran. */}
@@ -332,18 +358,21 @@ export function AssistantConversation({
           {newConversationButton}
         </div>
       </header>
-      <Card className="flex h-[calc(100dvh-17rem)] min-h-[26rem] flex-col overflow-hidden md:h-[calc(100dvh-12.5rem)]">
+      <Card className="flex h-[calc(100dvh-20rem-env(safe-area-inset-bottom))] min-h-[26rem] flex-col overflow-hidden md:h-[calc(100dvh-12.5rem)]">
         {body}
       </Card>
     </div>
   );
 }
 
-function PanelHeader({ titleId, children }: { titleId?: string; children: ReactNode }) {
+function PanelHeader({ titleId, title, children }: { titleId?: string; title: string; children: ReactNode }) {
   return (
-    <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 pt-[env(safe-area-inset-top)] box-content">
-      <h2 id={titleId} className="mr-auto text-[15px] font-semibold tracking-[-0.01em] text-fg">
-        Assistant
+    <div className="box-content flex h-14 shrink-0 items-center gap-1.5 border-b border-border px-4 pt-[env(safe-area-inset-top)]">
+      <h2 id={titleId} className="mr-auto flex min-w-0 items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-fg">
+        <span aria-hidden className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
+          <Sparkles className="size-3.5" />
+        </span>
+        <span className="truncate">{title}</span>
       </h2>
       {children}
     </div>

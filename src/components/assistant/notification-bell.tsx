@@ -12,7 +12,14 @@ import { KindIcon } from "./thread";
  * Cloche des messages de Claude non lus : compteur, menu des 10 derniers (clic → fil centré sur
  * le message), « Tout marquer comme lu ». Navigation au clavier : flèches, Début/Fin, Échap.
  */
-export function NotificationBell({ align = "left", className }: { align?: "left" | "right"; className?: string }) {
+export function NotificationBell({
+  placement = "dropdown",
+  className,
+}: {
+  /** `dropdown` : menu aligné à droite sous la cloche ; `sheet` : pleine largeur sous l'en-tête mobile. */
+  placement?: "dropdown" | "sheet";
+  className?: string;
+}) {
   const { unread, refreshUnread, openAt } = useAssistant();
   const [open, setOpen] = useState(false);
   const [marking, setMarking] = useState(false);
@@ -119,7 +126,7 @@ export function NotificationBell({ align = "left", className }: { align?: "left"
           }
         }}
         className={cn(
-          "relative inline-flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-2 hover:text-fg",
+          "relative inline-flex size-10 items-center justify-center rounded-full transition-colors hover:bg-surface-2 hover:text-fg pointer-coarse:size-11",
           open ? "bg-surface-2 text-fg" : "text-muted",
         )}
       >
@@ -127,7 +134,7 @@ export function NotificationBell({ align = "left", className }: { align?: "left"
         {count > 0 && (
           <span
             aria-hidden
-            className="num absolute right-0.5 top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-bg dark:text-bg"
+            className="num absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-bg dark:text-bg"
           >
             {badgeCount(count)}
           </span>
@@ -144,9 +151,9 @@ export function NotificationBell({ align = "left", className }: { align?: "left"
           className={cn(
             "z-50 overflow-hidden rounded-xl border border-border bg-surface text-fg shadow-pop",
             "transition-[opacity,translate] duration-150 ease-out starting:-translate-y-1 starting:opacity-0",
-            // En-tête mobile : menu sur toute la largeur sous l'en-tête ; barre latérale : sous la cloche.
-            align === "left"
-              ? "absolute left-0 top-full mt-2 w-[22rem]"
+            // En-tête mobile : menu sur toute la largeur sous l'en-tête ; ordinateur : sous la cloche.
+            placement === "dropdown"
+              ? "absolute right-0 top-full mt-2 w-[22rem]"
               : "fixed inset-x-4 top-[calc(3.5rem+env(safe-area-inset-top)+0.5rem)]",
           )}
         >
@@ -158,7 +165,7 @@ export function NotificationBell({ align = "left", className }: { align?: "left"
                 role="menuitem"
                 onClick={() => void markAll()}
                 disabled={marking}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[12px] font-medium text-accent hover:bg-accent-soft disabled:opacity-60"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[12px] pointer-coarse:h-10 font-medium text-accent hover:bg-accent-soft disabled:opacity-60"
               >
                 <CheckCheck aria-hidden className="size-3.5" />
                 Tout marquer comme lu

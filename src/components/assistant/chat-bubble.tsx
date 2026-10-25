@@ -1,14 +1,16 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { MessageCircle } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { badgeCount } from "@/lib/assistant-thread";
 import { cn } from "@/lib/cn";
 import { ASSISTANT_PATH, useAssistant } from "./assistant-provider";
 
 /**
- * Bouton flottant d'ouverture du panneau (masqué sur la page Assistant). Il reste monté panneau
- * ouvert (recouvert par celui-ci) pour recevoir le focus à la fermeture.
+ * Bouton flottant d'ouverture du panneau : au-dessus de la barre du bas sur téléphone, en bas à
+ * droite ailleurs. Masqué sur la page Assistant et, par le CSS (`globals.css`), quand la colonne
+ * Claude est affichée. Il reste monté panneau ouvert (recouvert par celui-ci) pour recevoir le
+ * focus à la fermeture.
  */
 export function ChatBubble() {
   const pathname = usePathname();
@@ -25,16 +27,17 @@ export function ChatBubble() {
       aria-label={label}
       aria-expanded={open}
       data-assistant-trigger=""
-      title="Assistant"
+      title="Claude"
       className={cn(
-        "fixed right-4 z-30 inline-flex size-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-pop",
-        "bottom-[calc(4rem+env(safe-area-inset-bottom)+0.875rem)] md:right-6 md:bottom-6",
-        "transition-[background-color,scale] duration-150 hover:bg-accent/90 active:scale-95",
+        // Encre (texte sur fond) : distincte du « + » en dégradé de la barre du bas.
+        "fixed right-4 z-30 inline-flex size-14 items-center justify-center rounded-full bg-fg text-bg shadow-pop",
+        "bottom-[calc(4.5rem+env(safe-area-inset-bottom)+0.75rem)] md:right-6 md:bottom-6",
+        "transition-[opacity,scale] duration-150 hover:opacity-90 active:scale-95",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         "starting:scale-90 starting:opacity-0",
       )}
     >
-      <MessageCircle aria-hidden className="size-6" />
+      <Sparkles aria-hidden className="size-6" />
       {count > 0 && (
         <span
           aria-hidden
