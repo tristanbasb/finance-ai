@@ -23,10 +23,17 @@ mono-utilisateur, installée en une commande.
   catégorisation automatique par l'IA (optionnelle).
 - **Épargne** : comptes d'épargne et objectifs avec progression et montant mensuel nécessaire.
 - **Investissements** : actions, ETF et cryptos avec **cours automatiques** (Yahoo Finance,
-  CoinGecko), actifs manuels (immobilier…), plus/moins-values, répartition par type.
-- **Assistant IA** (API Claude) : posez vos questions sur vos finances, analyse du mois.
-  L'IA consulte vos données en **lecture seule** et ne les modifie jamais.
-- **Réglages** : comptes, catégories et budgets, export JSON complet.
+  CoinGecko, actualisés toutes les heures), actifs manuels (immobilier…), plus/moins-values, répartition par type.
+- **Assistant IA** (API Claude) : une conversation **permanente** (bulle flottante, panneau
+  latéral ou page `/assistant`) pour poser vos questions sur vos finances. L'IA consulte vos
+  données en **lecture seule** et ne les modifie jamais. Le modèle se choisit dans l'application.
+- **Assistant proactif** : alertes (budgets, dépense inhabituelle, investissements, objectifs),
+  bilans hebdomadaire et mensuel, cloche de notifications — voir
+  [Assistant proactif](#assistant-proactif).
+- **Telegram** (optionnel) : recevez les alertes et discutez avec l'assistant depuis votre
+  téléphone, via un bot privé — voir [Telegram](#telegram).
+- **Réglages** : comptes, catégories et budgets, notifications, Telegram, modèle de l'IA,
+  export JSON complet.
 - Interface en français, en euros, responsive (mobile), thème clair et sombre.
 - Protégé par mot de passe, données stockées dans un simple fichier SQLite.
 
@@ -59,7 +66,8 @@ Le script :
 1. vérifie le système, installe Docker si nécessaire ;
 2. construit l'image Docker de l'application ;
 3. vous demande un **mot de passe** (8 caractères minimum, saisi deux fois, jamais affiché),
-   votre clé API Claude (optionnelle), le modèle et le port ;
+   votre clé API Claude (optionnelle), le token du bot Telegram (optionnel), le modèle et le
+   port ;
 4. crée `.env` (droits `600`) avec un secret de session aléatoire — un `.env` existant
    n'est jamais écrasé ;
 5. démarre l'application, attend qu'elle soit prête et affiche son adresse
@@ -80,7 +88,8 @@ FINANCE_AI_YES=1 \
 | --- | --- |
 | `FINANCE_AI_PASSWORD` | Mot de passe de connexion (8 caractères minimum) |
 | `ANTHROPIC_API_KEY` | Clé API Claude (définie mais vide = sans IA) |
-| `CLAUDE_MODEL` | Modèle Claude (défaut `claude-opus-5-5`) |
+| `TELEGRAM_BOT_TOKEN` | Token du bot Telegram (facultatif ; jamais demandé en mode non interactif) |
+| `CLAUDE_MODEL` | Modèle Claude par défaut (défaut `claude-opus-5-5`) |
 | `APP_PORT` | Port HTTP publié (défaut `3000`) |
 | `FINANCE_AI_YES=1` | Aucune question : « oui » aux confirmations (installation de Docker), valeurs par défaut ailleurs ; `FINANCE_AI_PASSWORD` devient obligatoire |
 | `FINANCE_AI_DIR` | Dossier d'installation en mode `curl … \| bash` (défaut `~/finance-ai`) |
@@ -99,12 +108,72 @@ Toute la configuration est dans le fichier `.env` à la racine du dépôt (modè
 | `APP_PASSWORD_HASH` | — | Hash scrypt du mot de passe (voir [Changer le mot de passe](#changer-le-mot-de-passe)) |
 | `SESSION_SECRET` | aléatoire | Secret de signature des sessions (≥ 32 caractères) ; le changer déconnecte tout le monde |
 | `ANTHROPIC_API_KEY` | vide | Clé API Claude ; sans clé, les fonctions IA sont désactivées |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | Modèle utilisé par l'assistant |
-| `TZ` | `Europe/Paris` | Fuseau horaire (date du jour, mois en cours, instantanés quotidiens) |
+| `TELEGRAM_BOT_TOKEN` | vide | Token du bot Telegram ; sans token, Telegram est désactivé (voir [Telegram](#telegram)) |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | Modèle **par défaut** de l'assistant, modifiable dans l'application (voir [Changer de modèle](#changer-de-modèle)) |
+| `TZ` | `Europe/Paris` | Fuseau horaire (date du jour, mois en cours, instantanés quotidiens, heure des bilans) |
 | `APP_PORT` | `3000` | Port publié sur l'hôte |
 | `APP_BIND` | `0.0.0.0` | Adresse d'écoute sur l'hôte ; `127.0.0.1` derrière un reverse proxy |
 | `COOKIE_SECURE` | `auto` | Cookie `Secure` : `auto` (si HTTPS), `true` ou `false` |
 | `TRUST_PROXY` | `false` | Limitation des connexions par IP via `X-Forwarded-For` (voir HTTPS) |
+| `FINANCE_AI_DISABLE_JOBS` | non défini | `1` coupe les tâches de fond (bilans et alertes planifiés, cours horaires, bot Telegram), pour diagnostic |
+
+## Assistant proactif
+
+L'assistant ne se contente pas de répondre : il vous prévient. Une **bulle** flottante ouvre la
+conversation avec Claude (panneau latéral, ou page plein écran `/assistant`) ; la **cloche**
+de la barre supérieure rassemble les notifications, et un message apparaît aussi en toast.
+
+<p align="center">
+  <img src="docs/images/assistant.png" alt="Panneau de l'assistant avec des alertes" width="64%">
+  &nbsp;
+  <img src="docs/images/notifications.png" alt="Menu de la cloche de notifications" width="32%">
+</p>
+
+**Alertes** (réglages par défaut) :
+
+- **budget** : à 80 % puis à 100 % du budget d'une catégorie ;
+- **dépense inhabituelle** : à partir de 100 € et au moins 3 fois votre dépense habituelle
+  dans la catégorie ;
+- **investissement** : variation d'une position de ±5 % ;
+- **objectif d'épargne** atteint.
+
+**Bilans** : un bilan **hebdomadaire** (le lundi) et un bilan **mensuel** (le 1er), rédigés par
+Claude à 8 h (heure du serveur, fuseau `TZ`, `Europe/Paris` par défaut) et publiés dans la
+conversation.
+
+Tout se règle dans **Réglages → Notifications** : types d'alertes, seuils, heure des bilans.
+Pour ne pas vous inonder quand vous importez un historique, les alertes ne concernent que le
+**mois en cours** (transactions des 35 derniers jours).
+
+Les cours sont actualisés automatiquement **toutes les heures**.
+
+## Telegram
+
+Un bot **privé** vous envoie les alertes et les bilans, et vous permet de discuter avec
+l'assistant depuis votre téléphone — la conversation est la même que dans l'application.
+
+1. Dans Telegram, ouvrez [@BotFather](https://t.me/BotFather), envoyez `/newbot` et suivez les
+   étapes : il vous donne un **token**.
+2. Ajoutez-le dans `.env` : `TELEGRAM_BOT_TOKEN=<token>` (ou répondez à la question de
+   `./install.sh`).
+3. Appliquez : `./update.sh --force` (ou `docker compose up -d`).
+4. Dans **Réglages → Telegram**, demandez un code de liaison à 6 chiffres, puis envoyez
+   `/start <code>` à votre bot.
+
+Commandes : `/nouveau` (nouvelle conversation), `/bilan` (bilan du moment), `/modele`
+(voir ou changer de modèle), `/aide`. Tout autre message est une question pour l'assistant.
+
+**Confidentialité** : seul le compte Telegram que vous avez lié est écouté, le bot ignore tous
+les autres. Le token n'est jamais affiché dans l'application. Les messages que Telegram a
+gardés pendant que le serveur était arrêté sont traités au redémarrage. Après 5 codes erronés,
+la liaison est suspendue 10 minutes.
+
+## Changer de modèle
+
+Le modèle de Claude se change sans toucher à `.env` : depuis l'**en-tête du chat**, depuis
+**Réglages**, ou avec `/modele` sur Telegram. La liste est récupérée auprès d'Anthropic et le
+choix est conservé dans la base. `CLAUDE_MODEL` n'est que le modèle **par défaut**, utilisé tant
+que vous n'en avez pas choisi un autre.
 
 ## Mise à jour
 
@@ -210,7 +279,10 @@ Non interactif : `FINANCE_AI_PASSWORD='…' ./scripts/set-password.sh`.
   - l'**IA** envoie à l'API d'Anthropic les données nécessaires à chaque demande :
     celles que l'assistant consulte pour répondre (soldes, transactions recherchées,
     positions…), les chiffres du mois pour l'« Analyse IA » et les libellés à catégoriser
-    lors d'un import ; sans clé API, rien n'est envoyé ;
+    lors d'un import ; les **alertes et bilans** sont aussi rédigés avec Claude, à partir de
+    vos chiffres ; sans clé API, rien n'est envoyé ;
+  - si vous activez **Telegram**, les messages (alertes, bilans, discussion) transitent par
+    les serveurs de Telegram ;
   - l'actualisation des cours interroge Yahoo Finance et CoinGecko avec les **symboles** de
     vos positions (jamais les quantités ni les montants).
 - La clé API reste dans `.env` et n'est **jamais affichée** dans l'interface.
