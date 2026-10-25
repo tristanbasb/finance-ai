@@ -7,7 +7,8 @@ import { accounts, holdings, jobRuns, messages } from "@/lib/db/schema";
 import { digestPeriod, dueDigests, hourKey, isoWeek } from "@/lib/jobs/periods";
 import { AI_REQUIRED_NOTICE, generateDigest } from "@/lib/jobs/digests";
 import { claimJob, startScheduler, tick, type TickDeps } from "@/lib/jobs/scheduler";
-import { DEFAULT_DIGEST_PREFS, getSetting, setSetting } from "@/lib/settings";
+import { DEFAULT_DIGEST_PREFS, getModelSetting, getSetting, setModelSetting, setSetting } from "@/lib/settings";
+import Anthropic from "@anthropic-ai/sdk";
 import type { Ai } from "@/lib/ai/client";
 import type { PriceDeps } from "@/lib/prices";
 import * as alerts from "@/lib/alerts/engine";
@@ -292,6 +293,27 @@ describe("tick : politique de reprise", () => {
     await run(59);
     expect(generate).toHaveBeenCalledTimes(3);
     expect(digestMessages(db)).toHaveLength(0);
+  });
+
+  it("modèle retiré : réglage effacé, nouvel essai avec le modèle par défaut", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    setModelSetting(db, "claude-retired-1");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const notFound = Anthropic.APIError.generate(
+      404,
+      { type: "error", error: { type: "not_found_error", message: "model: claude-retired-1" } },
+      "m",
+      new Headers(),
+    );
+    const generate = vi.fn().mockRejectedValueOnce(notFound).mockResolvedValue("x");
+    await tick(db, mon(9), { ai: fakeAi, generate });
+    expect(getModelSetting(db)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(digestMessages(db)).toHaveLength(0);
+    await tick(db, mon(9, 15), { ai: fakeAi, generate });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(digestMessages(db)).toHaveLength(1);
   });
 
   it("nouvelle période : compteur remis à zéro", async () => {

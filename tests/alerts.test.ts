@@ -5,11 +5,12 @@ import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
 import { accounts, alertLog, categories, goals, holdings, messages, prices } from "@/lib/db/schema";
 import { budgetAlerts, goalReachedAlerts, priceMoveAlerts, unusualExpense } from "@/lib/alerts/rules";
-import { alertMessage, claimAlerts, runAlertChecks } from "@/lib/alerts/engine";
+import Anthropic from "@anthropic-ai/sdk";
+import { ALERT_MESSAGE_TIMEOUT_MS, alertMessage, claimAlerts, runAlertChecks } from "@/lib/alerts/engine";
 import { createTransaction, insertTransactions } from "@/lib/queries/transactions";
 import { refreshPrices, type PriceFetcher } from "@/lib/prices";
 import { registerChannel } from "@/lib/assistant/dispatch";
-import { setSetting } from "@/lib/settings";
+import { getModelSetting, setModelSetting, setSetting } from "@/lib/settings";
 import type { Ai } from "@/lib/ai/client";
 import * as conversation from "@/lib/assistant/conversation";
 
@@ -36,8 +37,9 @@ function expenseCat(db: TestDb, budget: number | null) {
   return c;
 }
 function fakeAi(text: string | Error) {
-  const create = vi.fn(async (params: unknown) => {
+  const create = vi.fn(async (params: unknown, opts?: unknown) => {
     void params;
+    void opts;
     if (text instanceof Error) throw text;
     return { content: [{ type: "text", text }] };
   });
@@ -156,6 +158,34 @@ describe("alertMessage", () => {
     const params = create.mock.calls[0][0] as Record<string, unknown>;
     expect(params.max_tokens).toBe(600);
     expect(params.tools).toBeUndefined();
+    const opts = create.mock.calls[0][1] as { signal?: AbortSignal } | undefined;
+    expect(opts?.signal).toBeInstanceOf(AbortSignal);
+  });
+  it("délai dépassé (60 s par défaut) → texte modèle", async () => {
+    expect(ALERT_MESSAGE_TIMEOUT_MS).toBe(60_000);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const create = vi.fn(
+      (_params: unknown, opts?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => opts?.signal?.addEventListener("abort", () => reject(opts.signal!.reason))),
+    );
+    const ai = { client: { messages: { create } }, model: "claude-opus-5-5" } as unknown as Ai;
+    expect(await alertMessage(ai, alerts, { timeoutMs: 20 })).toContain("**Alimentation**");
+  });
+  it("modèle retiré → réglage du modèle effacé, texte modèle", async () => {
+    const db = freshDb();
+    setModelSetting(db, "claude-retired-1");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const notFound = Anthropic.APIError.generate(
+      404,
+      { type: "error", error: { type: "not_found_error", message: "model: claude-retired-1" } },
+      "m",
+      new Headers(),
+    );
+    const { ai } = fakeAi(notFound);
+    expect(await alertMessage(ai, alerts, { db })).toContain("**Alimentation**");
+    expect(getModelSetting(db)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 

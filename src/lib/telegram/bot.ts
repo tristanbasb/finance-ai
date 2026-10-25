@@ -22,9 +22,12 @@ export const BAD_CODE_MESSAGE = "Code invalide ou expiré : générez-en un nouv
 export const NEW_CONVERSATION_MESSAGE = "Nouvelle conversation.";
 export const BILAN_PROMPT = "Fais-moi un bilan de mon mois en cours.";
 export const GENERIC_ERROR_MESSAGE = "Une erreur est survenue. Réessayez.";
+export const RESPOND_TIMEOUT_MESSAGE = "La réponse a pris trop de temps. Réessayez.";
 
 export const MAX_TEXT_LENGTH = 8000;
 export const TYPING_INTERVAL_MS = 4000;
+/** Délai maximal d'une réponse de Claude à un message Telegram. */
+export const RESPOND_TIMEOUT_MS = 180_000;
 const PRIVATE_NOTICE_MS = 3600_000;
 /** Nombre maximal de chats inconnus mémorisés pour la limitation de « Ce bot est privé. ». */
 export const PRIVATE_NOTICE_CAP = 1000;
@@ -51,6 +54,7 @@ export type BotContext = {
   listModels: typeof listModels;
   now: () => number;
   typingIntervalMs: number;
+  respondTimeoutMs: number;
   guard: BotGuard;
 };
 
@@ -67,6 +71,7 @@ export function createBotContext(
     listModels,
     now: Date.now,
     typingIntervalMs: TYPING_INTERVAL_MS,
+    respondTimeoutMs: RESPOND_TIMEOUT_MS,
     guard: { failures: [], blockedUntil: 0, privateNotified: new Map() },
     ...overrides,
   };
@@ -176,8 +181,9 @@ async function converse(ctx: BotContext, chatId: string, content: string): Promi
   typing();
   const timer = setInterval(typing, ctx.typingIntervalMs);
   let reply: Message | null;
+  const signal = AbortSignal.timeout(ctx.respondTimeoutMs);
   try {
-    reply = await ctx.respond(ctx.db, { ai, source: "telegram", channel: "telegram" });
+    reply = await ctx.respond(ctx.db, { ai, source: "telegram", channel: "telegram", signal });
   } catch (err) {
     let text: string;
     if (err instanceof ModelUnavailableError || err instanceof BadRequestError) text = err.message;
@@ -193,8 +199,10 @@ async function converse(ctx: BotContext, chatId: string, content: string): Promi
   }
   // Chat délié ou remplacé pendant la génération : rien n'est envoyé (la réponse reste au fil).
   if (linkedChatId(ctx.db) !== chatId) return;
-  // La réponse n'est pas diffusée vers le canal d'origine : on l'envoie ici.
+  // La réponse n'est pas diffusée vers le canal d'origine : on l'envoie ici (texte partiel
+  // suffixé si le délai a coupé la génération ; rien du tout : message d'excuse).
   if (reply) await sendMarkdown(ctx.api, chatId, reply.content);
+  else if (signal.aborted) await ctx.api.sendMessage(chatId, escapeHtml(RESPOND_TIMEOUT_MESSAGE));
 }
 
 /**

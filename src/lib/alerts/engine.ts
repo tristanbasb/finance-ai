@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNull, like, lt } from "drizzle-orm";
 import type { Db } from "@/lib/db";
 import { alertLog, categories, prices, transactions } from "@/lib/db/schema";
-import { aiErrorInfo, getAi, type Ai } from "@/lib/ai/client";
+import { aiErrorInfo, getAi, isModelNotFound, type Ai } from "@/lib/ai/client";
 import { modelSupports } from "@/lib/ai/models";
 import { postAssistantMessage } from "@/lib/assistant/conversation";
 import { todayLocal } from "@/lib/dates";
@@ -9,7 +9,7 @@ import { goalProgress } from "@/lib/finance";
 import { listGoalsWithCurrent } from "@/lib/queries/goals";
 import { listHoldingsWithValues } from "@/lib/queries/holdings";
 import { getOverview } from "@/lib/queries/overview";
-import { alertPrefs } from "@/lib/settings";
+import { alertPrefs, setModelSetting } from "@/lib/settings";
 import {
   budgetAlerts,
   goalReachedAlerts,
@@ -37,6 +37,8 @@ const MEDIAN_DAYS = 90;
 const EXPENSE_RECENT_DAYS = 35;
 /** Nombre maximal d'alertes détaillées dans un message ; les autres sont résumées. */
 export const MAX_ALERTS_IN_MESSAGE = 10;
+/** Délai maximal de rédaction d'un message d'alerte par Claude ; au-delà, texte modèle. */
+export const ALERT_MESSAGE_TIMEOUT_MS = 60_000;
 
 /**
  * Journalise les alertes (clé + clés supplémentaires) ; insertion atomique, les clés déjà
@@ -108,32 +110,46 @@ export function sortAlerts(alerts: Alert[]): Alert[] {
   return [...alerts].sort((a, b) => PRIORITY[a.type] - PRIORITY[b.type] || magnitude(b) - magnitude(a));
 }
 
-/** Texte d'un message d'alerte groupé : rédigé par Claude (sans outils), sinon texte modèle. */
-export async function alertMessage(ai: Ai | null, all: Alert[]): Promise<string> {
+/**
+ * Texte d'un message d'alerte groupé : rédigé par Claude (sans outils, 60 s au plus), sinon
+ * texte modèle. Modèle retiré (404) : le réglage du modèle est effacé (`db`) pour la suite.
+ */
+export async function alertMessage(
+  ai: Ai | null,
+  all: Alert[],
+  { db, timeoutMs = ALERT_MESSAGE_TIMEOUT_MS }: { db?: Db; timeoutMs?: number } = {},
+): Promise<string> {
   const alerts = all.slice(0, MAX_ALERTS_IN_MESSAGE);
   const extra = all.length - alerts.length;
   if (ai) {
     try {
-      const msg = await ai.client.messages.create({
-        model: ai.model,
-        max_tokens: 600,
-        system: SYSTEM,
-        ...(modelSupports(ai.model, "effort") ? { output_config: { effort: "low" as const } } : {}),
-        messages: [
-          {
-            role: "user",
-            content:
-              `Alertes (JSON) :\n${JSON.stringify(alerts.map((a) => ({ type: a.type, facts: a.facts })))}` +
-              (extra > 0 ? `\n\nTermine le message par la ligne exacte : « ${othersLine(extra)} »` : ""),
-          },
-        ],
-      });
+      const msg = await ai.client.messages.create(
+        {
+          model: ai.model,
+          max_tokens: 600,
+          system: SYSTEM,
+          ...(modelSupports(ai.model, "effort") ? { output_config: { effort: "low" as const } } : {}),
+          messages: [
+            {
+              role: "user",
+              content:
+                `Alertes (JSON) :\n${JSON.stringify(alerts.map((a) => ({ type: a.type, facts: a.facts })))}` +
+                (extra > 0 ? `\n\nTermine le message par la ligne exacte : « ${othersLine(extra)} »` : ""),
+            },
+          ],
+        },
+        { signal: AbortSignal.timeout(timeoutMs) },
+      );
       const text = msg.content
         .flatMap((b) => (b.type === "text" ? [b.text] : []))
         .join("")
         .trim();
       if (text) return text;
     } catch (err) {
+      if (db && isModelNotFound(err)) {
+        setModelSetting(db, null);
+        console.warn(`[alerts] modèle ${ai.model} introuvable : réglage effacé, modèle par défaut au prochain appel`);
+      }
       console.error("[alerts] rédaction par Claude échouée, texte modèle utilisé :", aiErrorInfo(err)?.message ?? err);
     }
   }
@@ -283,7 +299,7 @@ async function check(db: Db, scope: AlertScope, deps: Deps): Promise<void> {
 
   try {
     const fresh = sortAlerts(claimed);
-    const content = await alertMessage(deps.ai === undefined ? getAi(db) : deps.ai, fresh);
+    const content = await alertMessage(deps.ai === undefined ? getAi(db) : deps.ai, fresh, { db });
     const message = await postAssistantMessage(db, {
       kind: "alert",
       content,

@@ -1,6 +1,6 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { getAi, type Ai } from "@/lib/ai/client";
+import { getAi, isModelNotFound, type Ai } from "@/lib/ai/client";
 import { runAlertChecks } from "@/lib/alerts/engine";
 import { postAssistantMessage } from "@/lib/assistant/conversation";
 import type { Db } from "@/lib/db";
@@ -9,7 +9,7 @@ import { todayLocal } from "@/lib/dates";
 import { refreshPrices, type PriceDeps } from "@/lib/prices";
 import { realPriceDeps } from "@/lib/prices/real-deps";
 import { recordSnapshot } from "@/lib/queries/snapshots";
-import { digestPrefs, getSetting, setSetting } from "@/lib/settings";
+import { digestPrefs, getSetting, setModelSetting, setSetting } from "@/lib/settings";
 import { AI_REQUIRED_NOTICE, generateDigest } from "./digests";
 import { dueDigests, hourKey, isoWeek, monthKey, type DigestKind } from "./periods";
 
@@ -79,6 +79,11 @@ async function runDigest(db: Db, kind: DigestKind, now: Date, deps: TickDeps): P
     const content = await (deps.generate ?? generateDigest)(db, ai, kind, now);
     await postAssistantMessage(db, { kind, content, meta: { period } });
   } catch (err) {
+    if (isModelNotFound(err)) {
+      // Modèle retiré : retour au modèle par défaut, utilisé dès le prochain essai.
+      setModelSetting(db, null);
+      console.warn(`[jobs] modèle ${ai.model} introuvable : réglage effacé, modèle par défaut au prochain essai`);
+    }
     recordFailure(db, kind, period, previous, now, err);
   }
 }

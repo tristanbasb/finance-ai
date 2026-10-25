@@ -29,6 +29,8 @@ import {
   NON_TEXT_MESSAGE,
   PRIVATE_MESSAGE,
   PRIVATE_NOTICE_CAP,
+  RESPOND_TIMEOUT_MS,
+  RESPOND_TIMEOUT_MESSAGE,
   startBot,
   TELEGRAM_HINT,
   TOO_LONG_MESSAGE,
@@ -322,6 +324,29 @@ describe("handleUpdate", () => {
     const calls = actions.length;
     await new Promise((r) => setTimeout(r, 20));
     expect(actions.length).toBe(calls);
+  });
+
+  it("respond reçoit un délai de 180 s (signal)", async () => {
+    expect(RESPOND_TIMEOUT_MS).toBe(180_000);
+    const { db, ctx, respondMock } = setup();
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "salut"));
+    const opts = respondMock.mock.calls[0][1 as 0] as unknown as { signal?: AbortSignal };
+    expect(opts.signal).toBeInstanceOf(AbortSignal);
+    expect(opts.signal!.aborted).toBe(false);
+  });
+
+  it("délai de réponse dépassé → génération annulée, message d'excuse", async () => {
+    const { db, ctx, sent } = setup({
+      respondTimeoutMs: 20,
+      respond: (async (_d: TestDb, opts: { signal?: AbortSignal }) => {
+        await new Promise((r) => opts.signal!.addEventListener("abort", r));
+        return null;
+      }) as unknown as BotContext["respond"],
+    });
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "salut"));
+    expect(sent.map((s) => s.text)).toEqual([RESPOND_TIMEOUT_MESSAGE]);
   });
 
   it("réponse null (déjà traitée) → rien envoyé", async () => {
