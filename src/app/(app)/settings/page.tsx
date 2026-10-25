@@ -7,6 +7,7 @@ import { AccountsManager } from "@/components/settings/accounts-manager";
 import { AiStatus } from "@/components/settings/ai-status";
 import { CategoriesManager } from "@/components/settings/categories-manager";
 import { NotificationsSettings } from "@/components/settings/notifications-settings";
+import { ResetData } from "@/components/settings/reset-data";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { TelegramSettings } from "@/components/settings/telegram-settings";
 import { LogoutButton } from "@/components/logout-button";
@@ -72,6 +73,7 @@ export default function SettingsPage() {
             de <code className={codeClasses}>data/finance.db</code> est réalisée à chaque mise à jour par{" "}
             <code className={codeClasses}>update.sh</code>.
           </p>
+          <ResetData />
         </CardContent>
       </Card>
 

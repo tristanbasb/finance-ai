@@ -323,6 +323,14 @@ La copie se fait dans un conteneur éphémère, avec l'utilisateur propriétaire
 journaux périmés sont supprimés, puis la base est copiée avec son journal WAL s'il existe
 (cas d'une copie brute faite par `update.sh` sans image Docker disponible).
 
+**Repartir de zéro** : **Réglages → Données → Réinitialiser l'application** efface toutes les
+données (opérations, comptes, positions, objectifs, budgets, conversation avec Claude, réglages
+et liaison Telegram) et l'application repart comme une installation neuve. Le mot de passe, la
+clé API et le token Telegram, qui sont dans `.env`, ne changent pas. La confirmation demande
+le mot de passe et le mot `RÉINITIALISER`. Une sauvegarde complète
+`backups/avant-reinitialisation-AAAAmmjj-HHMMSS.db` est faite juste avant : restaurez-la comme
+ci-dessus pour revenir en arrière.
+
 ## Changer le mot de passe
 
 ```bash
