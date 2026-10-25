@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +14,8 @@ import { actionStatus, undoAction, type Change } from "@/lib/ai/actions";
 import { aiTools, runTool } from "@/lib/ai/tools";
 import { formatEUR } from "@/lib/money";
 import { categoryInput, goalInput, holdingInput } from "@/lib/validation";
-import { CATEGORY_ICON_NAMES } from "@/components/category-icon";
+import { CATEGORY_ICON_NAMES } from "@/lib/category-icon-names";
+import { CATEGORY_ICON_NAMES as UI_ICON_NAMES } from "@/components/category-icon";
 import {
   MAX_WRITES_PER_RESPONSE,
   WRITE_TOOL_NAMES,
@@ -436,6 +439,12 @@ describe("corrections de revue", () => {
     const def = writeTools.find((t) => t.name === "create_category")!;
     const icon = (def.input_schema.properties as Record<string, { enum: string[] }>).icon;
     expect(icon.enum).toEqual([...CATEGORY_ICON_NAMES]);
+    expect([...UI_ICON_NAMES]).toEqual([...CATEGORY_ICON_NAMES]);
+  });
+
+  it("write-tools n'importe aucun module d'interface (lucide-react)", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, "../src/lib/ai/write-tools.ts"), "utf8");
+    expect(src).not.toMatch(/@\/components\//);
   });
 
   it("get_overview liste toutes les catégories avec id, sens et budget", async () => {

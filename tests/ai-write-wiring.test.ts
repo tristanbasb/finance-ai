@@ -172,6 +172,23 @@ describe("runChat avec écriture", () => {
     expect(db.select().from(transactions).all()).toHaveLength(0);
   });
 
+  it("interruption pendant un lot : les écritures suivantes ne sont pas exécutées", async () => {
+    const db = freshDb();
+    const controller = new AbortController();
+    runAlertChecks.mockImplementation(async () => controller.abort());
+    const { ai, calls } = fakeAi([
+      { tools: [ADD, { ...ADD, input: { ...ADD.input, label: "Deuxième" } }] },
+      { texts: ["Fini"] },
+    ]);
+    const write = { actionIds: [] as number[] };
+    // L'interruption arrive pendant la première écriture (déclenchement des alertes).
+    for await (const _ of runChat({ ai, db, messages: [{ role: "user", content: "Ajoute" }], today: TODAY, write, signal: controller.signal })) void _;
+    runAlertChecks.mockImplementation(async () => {});
+    expect(write.actionIds).toHaveLength(1);
+    expect(db.select().from(transactions).all().map((t) => t.label)).toEqual(["Boulangerie"]);
+    expect(calls).toHaveLength(1);
+  });
+
   it("une seule enveloppe de 20 écritures par réponse, sur tous les tours", async () => {
     const db = freshDb();
     const many = (n: number) => Array.from({ length: n }, (_, k) => ({ ...ADD, input: { ...ADD.input, label: `Achat ${k}` } }));
@@ -487,8 +504,26 @@ describe("routes", () => {
     ]);
   });
 
+  it("POST undo concurrents sur la même action : un seul succès, l'autre 409 « Déjà annulée. »", async () => {
+    const id = addedAction();
+    const results = await Promise.all([
+      undoPOST(req(`/api/ai/actions/${id}/undo`, { method: "POST" }), ctx(String(id))),
+      undoPOST(req(`/api/ai/actions/${id}/undo`, { method: "POST" }), ctx(String(id))),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(await results.find((r) => r.status === 409)!.json()).toEqual({ error: "Déjà annulée." });
+    expect(listMessages(db).filter((m) => m.source === "system")).toHaveLength(1);
+  });
+
+  it("undoAndAnnounce concurrents : un seul succès", async () => {
+    const id = addedAction();
+    const [a, b] = await Promise.all([undoAndAnnounce(db, id), undoAndAnnounce(db, id)]);
+    expect([a.ok, b.ok].sort()).toEqual([false, true]);
+    expect((a.ok ? b : a) as { reason: string }).toMatchObject({ reason: "Déjà annulée." });
+  });
+
   it("GET /api/ai/actions : 400 si ids absents, invalides ou trop nombreux", async () => {
-    for (const q of ["", "?ids=", "?ids=a,b", "?ids=0", "?ids=1,,2", `?ids=${Array.from({ length: 51 }, (_, k) => k + 1).join(",")}`]) {
+    for (const q of ["", "?ids=", "?ids=a,b", "?ids=0", "?ids=1,,2", "?ids=9007199254740993", "?ids=1234567890123456", `?ids=${Array.from({ length: 51 }, (_, k) => k + 1).join(",")}`]) {
       expect((await actionsGET(req(`/api/ai/actions${q}`))).status).toBe(400);
     }
   });

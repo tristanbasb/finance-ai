@@ -18,6 +18,9 @@ export const MAX_TOOL_ITERATIONS = 8;
  */
 export const MAX_TOOL_ITERATIONS_WRITE = 12;
 
+/** Résultat des appels d'outils restants d'un lot après une interruption (Stop, onglet fermé, délai). */
+export const INTERRUPTED_TOOL_ERROR = "Interrompu par l'utilisateur.";
+
 /** Tour avec écriture : `actionIds` reçoit les ids du journal des actions réussies, dans l'ordre. */
 export type WriteSession = { actionIds: number[] };
 
@@ -170,7 +173,10 @@ export async function* runChat({
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const use of toolUses) {
       let result: unknown;
-      if (write && WRITE_TOOL_NAMES.has(use.name)) {
+      // Interruption pendant un lot : plus aucun outil (surtout aucune écriture) n'est exécuté.
+      if (signal?.aborted) {
+        result = { error: INTERRUPTED_TOOL_ERROR };
+      } else if (write && WRITE_TOOL_NAMES.has(use.name)) {
         const outcome = await runWriteTool(db, use.name, use.input, writeCtx);
         if (outcome.actionId !== undefined) write.actionIds.push(outcome.actionId);
         result = outcome.result;
@@ -186,6 +192,7 @@ export async function* runChat({
       });
     }
     history.push({ role: "user", content: results });
+    if (signal?.aborted) break;
   }
 
   yield { type: "done" };

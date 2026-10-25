@@ -7,7 +7,7 @@ import { ACCOUNT_TYPES, ASSET_TYPES } from "@/lib/db/schema";
 import { ConflictError, NotFoundError } from "@/lib/api";
 import type { AlertScope } from "@/lib/alerts/engine";
 import { runAlertChecksSoon } from "@/lib/alerts/trigger";
-import { CATEGORY_ICON_NAMES } from "@/components/category-icon";
+import { CATEGORY_ICON_NAMES } from "@/lib/category-icon-names";
 import { formatEUR } from "@/lib/money";
 import { defaultAccountId, MAX_AMOUNT_CENTS } from "@/lib/quick-add";
 import { createAccount, updateAccount } from "@/lib/queries/accounts";
@@ -64,7 +64,7 @@ const CATEGORY_COLORS = [
   "#a855f7", "#ec4899", "#ef4444", "#f97316", "#f59e0b", "#94a3b8",
 ] as const;
 
-// Icônes proposées par l'interface (module sans "use client" : importable côté serveur).
+// Icônes proposées par l'interface (module pur, sans lucide-react).
 const CATEGORY_ICONS = CATEGORY_ICON_NAMES;
 const DEFAULT_ICON = "circle-ellipsis";
 

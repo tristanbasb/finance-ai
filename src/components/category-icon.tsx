@@ -29,6 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { CATEGORY_ICON_NAMES as ICON_NAMES, type CategoryIconName as IconName } from "@/lib/category-icon-names";
 import { tintStyle } from "@/lib/category-tint";
 
 /** Icônes lucide utilisables pour une catégorie (nom kebab stocké en base → composant). */
@@ -61,14 +62,12 @@ const ICONS = {
   "book-open": BookOpen,
   dumbbell: Dumbbell,
   tag: Tag,
-} satisfies Record<string, LucideIcon>;
+} satisfies Record<IconName | "house", LucideIcon>;
 
 export type CategoryIconName = keyof typeof ICONS;
 
-/** Noms proposés dans un sélecteur d'icône (sans l'alias `house`). */
-export const CATEGORY_ICON_NAMES = (Object.keys(ICONS) as CategoryIconName[]).filter(
-  (n) => n !== "house",
-);
+/** Noms proposés dans un sélecteur d'icône (sans l'alias `house`) : `src/lib/category-icon-names.ts`. */
+export const CATEGORY_ICON_NAMES: readonly IconName[] = ICON_NAMES;
 
 /** Composant lucide d'une icône de catégorie ; `Tag` si le nom est inconnu ou absent. */
 export function categoryIconComponent(name: string | null | undefined): LucideIcon {

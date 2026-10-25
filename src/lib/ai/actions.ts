@@ -18,6 +18,7 @@ const DAY_MS = 24 * 3600 * 1000;
 
 /** Raison renvoyée pour un id absent du journal (404 côté API). */
 export const ACTION_NOT_FOUND = "Action introuvable.";
+export const UNDO_FAILED = "Annulation impossible : les données ont changé depuis.";
 
 const TABLES = { transactions, categories, goals, accounts, holdings } as const;
 const TABLE_LABELS: Record<ChangeTable, string> = {
@@ -195,8 +196,9 @@ export function undoAction(db: Db, id: number, now = Date.now()): { ok: true; su
       tx.update(aiActions).set({ undoneAt: now }).where(eq(aiActions.id, id)).run();
     });
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
-    return { ok: false, reason: `Annulation impossible : ${detail}` };
+    // Détail SQLite journalisé côté serveur seulement ; raison générique pour l'utilisateur.
+    console.error(`[ai] échec de l'annulation de l'action ${id} :`, e);
+    return { ok: false, reason: UNDO_FAILED };
   }
   return { ok: true, summary: status.summary };
 }

@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { actionStatus, attachActionsToMessage, recordAction, undoAction, type Change } from "@/lib/ai/actions";
 import { aiActions, categories, goals, transactions } from "@/lib/db/schema";
 import { createDb, type Db } from "@/lib/db";
@@ -135,9 +135,11 @@ describe("undoAction", () => {
         { table: "transactions", id: created.id, before: null, after: created },
       ],
     });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = undoAction(db, id);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toMatch(/^Annulation impossible/);
+    expect(res).toEqual({ ok: false, reason: "Annulation impossible : les données ont changé depuis." });
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
     expect(txById(created.id)).toBeDefined();
     expect(txById(tx.id)).toBeUndefined();
     expect(actionStatus(db, id).undoneAt).toBeNull();

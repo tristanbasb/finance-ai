@@ -10,9 +10,13 @@ const MAX_ACTION_IDS = 50;
 const query = z.object({
   ids: z
     .string()
-    .regex(/^[1-9]\d{0,15}(,[1-9]\d{0,15})*$/, "Liste d'ids attendue (ex. 1,2,3)")
+    .regex(/^[1-9]\d{0,14}(,[1-9]\d{0,14})*$/, "Liste d'ids attendue (ex. 1,2,3)")
     .transform((s) => [...new Set(s.split(",").map(Number))])
-    .pipe(z.array(z.number().int().positive()).max(MAX_ACTION_IDS, `${MAX_ACTION_IDS} ids au plus`)),
+    .pipe(
+      z
+        .array(z.number().int().positive().refine(Number.isSafeInteger, "Identifiant invalide"))
+        .max(MAX_ACTION_IDS, `${MAX_ACTION_IDS} ids au plus`),
+    ),
 });
 
 /**
