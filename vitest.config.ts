@@ -10,5 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // Aucun test ne doit toucher ./data : la base du singleton getDb() est en mémoire.
+    env: { DATABASE_PATH: ":memory:" },
   },
 });

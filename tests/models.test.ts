@@ -18,7 +18,7 @@ function freshDb() {
   return db;
 }
 
-const ENV_KEYS = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL", "DATABASE_PATH"] as const;
+const ENV_KEYS = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL"] as const;
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -185,14 +185,12 @@ describe("routes modèle", () => {
   }
 
   it("GET /api/ai/models sans IA → secours + modèle effectif", async () => {
-    process.env.DATABASE_PATH = ":memory:";
     runMigrations(getDb());
     const res = await modelsGET();
     expect(await res.json()).toEqual({ models: FALLBACK_MODELS, current: "claude-opus-5-5" });
   });
 
   it("PUT refuse un id inconnu, accepte un id listé, et le statut le reflète", async () => {
-    process.env.DATABASE_PATH = ":memory:";
     const db = getDb();
     runMigrations(db);
     const bad = await put({ model: "claude-nimporte-quoi" });

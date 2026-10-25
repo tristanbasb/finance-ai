@@ -49,7 +49,7 @@ function req(url: string, init?: RequestInit) {
 
 const PING = ": ping\n\n";
 
-const ENV_KEYS = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL", "DATABASE_PATH"] as const;
+const ENV_KEYS = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL"] as const;
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
