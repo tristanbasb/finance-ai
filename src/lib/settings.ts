@@ -1,0 +1,67 @@
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import type { Db } from "@/lib/db";
+import { settings } from "@/lib/db/schema";
+
+export const alertPrefsSchema = z.object({
+  enabled: z.boolean().default(true),
+  budget: z.boolean().default(true),
+  unusualExpense: z.boolean().default(true),
+  unusualMinEur: z.number().min(0).default(100),
+  priceMove: z.boolean().default(true),
+  priceMovePct: z.number().positive().default(5),
+  goalReached: z.boolean().default(true),
+});
+export type AlertPrefs = z.infer<typeof alertPrefsSchema>;
+
+export const digestPrefsSchema = z.object({
+  weekly: z.boolean().default(true),
+  monthly: z.boolean().default(true),
+  hour: z.number().int().min(0).max(23).default(8),
+});
+export type DigestPrefs = z.infer<typeof digestPrefsSchema>;
+
+export const DEFAULT_ALERT_PREFS: AlertPrefs = alertPrefsSchema.parse({});
+export const DEFAULT_DIGEST_PREFS: DigestPrefs = digestPrefsSchema.parse({});
+
+/** Lit un réglage (JSON texte) ; absent, JSON invalide ou refusé par le schéma → `fallback`. */
+export function getSetting<T>(db: Db, key: string, schema: z.ZodType<T>, fallback: T): T {
+  const row = db.select().from(settings).where(eq(settings.key, key)).get();
+  if (!row) return fallback;
+  try {
+    const parsed = schema.safeParse(JSON.parse(row.value));
+    return parsed.success ? parsed.data : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function setSetting(db: Db, key: string, value: unknown, now: number = Date.now()): void {
+  const json = JSON.stringify(value);
+  db.insert(settings)
+    .values({ key, value: json, updatedAt: now })
+    .onConflictDoUpdate({ target: settings.key, set: { value: json, updatedAt: now } })
+    .run();
+}
+
+export function deleteSetting(db: Db, key: string): void {
+  db.delete(settings).where(eq(settings.key, key)).run();
+}
+
+export function alertPrefs(db: Db): AlertPrefs {
+  return getSetting(db, "alerts", alertPrefsSchema, DEFAULT_ALERT_PREFS);
+}
+
+export function digestPrefs(db: Db): DigestPrefs {
+  return getSetting(db, "digests", digestPrefsSchema, DEFAULT_DIGEST_PREFS);
+}
+
+/** Modèle Claude choisi par l'utilisateur, ou null (→ modèle par défaut de l'app). */
+export function getModelSetting(db: Db): string | null {
+  return getSetting<string | null>(db, "claude_model", z.string().min(1), null);
+}
+
+export function setModelSetting(db: Db, model: string | null): void {
+  if (model === null) deleteSetting(db, "claude_model");
+  else setSetting(db, "claude_model", model);
+}

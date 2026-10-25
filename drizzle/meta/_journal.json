@@ -8,6 +8,13 @@
       "when": 1792865980751,
       "tag": "0000_brave_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792912353521,
+      "tag": "0001_common_brother_voodoo",
+      "breakpoints": true
     }
   ]
 }

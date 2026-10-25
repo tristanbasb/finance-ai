@@ -83,6 +83,7 @@ export const prices = sqliteTable("prices", {
   price: real("price").notNull(),
   currency: text("currency").notNull(),
   fetchedAt: integer("fetched_at").notNull(),
+  changePct: real("change_pct"),
 });
 
 export const snapshots = sqliteTable("snapshots", {
@@ -96,4 +97,45 @@ export const aiCache = sqliteTable("ai_cache", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   createdAt: integer("created_at").notNull().$defaultFn(now),
+});
+
+export const MESSAGE_ROLES = ["user", "assistant", "divider"] as const;
+export const MESSAGE_KINDS = ["chat", "alert", "weekly", "monthly", "divider"] as const;
+export const MESSAGE_SOURCES = ["app", "telegram", "system"] as const;
+
+/** Fil de discussion unique partagé entre l'app et Telegram. `meta` : JSON texte nullable. */
+export const messages = sqliteTable(
+  "messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    role: text("role", { enum: MESSAGE_ROLES }).notNull(),
+    kind: text("kind", { enum: MESSAGE_KINDS }).notNull(),
+    content: text("content").notNull(),
+    source: text("source", { enum: MESSAGE_SOURCES }).notNull(),
+    readAt: integer("read_at"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    meta: text("meta"),
+  },
+  (t) => [index("messages_created_at_idx").on(t.createdAt), index("messages_read_at_idx").on(t.readAt)],
+);
+
+/** Réglages clé/valeur ; `value` est du JSON texte. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+});
+
+/** Journal de déduplication des alertes (ex. `budget:12:2026-10:80`). */
+export const alertLog = sqliteTable("alert_log", {
+  key: text("key").primaryKey(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  messageId: integer("message_id"),
+});
+
+/** Dernière exécution par tâche planifiée (`weekly`/`monthly`/`prices`). */
+export const jobRuns = sqliteTable("job_runs", {
+  job: text("job").primaryKey(),
+  lastPeriod: text("last_period").notNull(),
+  lastRunAt: integer("last_run_at").notNull(),
 });
