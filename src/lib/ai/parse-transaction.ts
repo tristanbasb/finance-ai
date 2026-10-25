@@ -2,12 +2,13 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { AiOutputError, type Ai } from "./client";
 import { modelSupports } from "./models";
+import { MAX_AMOUNT_CENTS } from "@/lib/quick-add";
 
 export const NO_AMOUNT_MESSAGE = "Je n'ai pas trouvé de montant.";
 export const MAX_LABEL = 200;
 export const PARSE_TIMEOUT_MS = 30_000;
-/** Plafond de montant : 100 M€ en centimes. */
-export const MAX_AMOUNT_CENTS = 10_000_000_000;
+/** Plafond de montant : celui du formulaire de saisie rapide (une proposition doit y passer). */
+export { MAX_AMOUNT_CENTS };
 
 export type CategoryOption = { id: number; name: string; kind: "expense" | "income" };
 export type AccountOption = { id: number; name: string; type: string; archived?: boolean };

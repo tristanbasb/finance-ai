@@ -215,3 +215,16 @@ describe("POST /api/ai/parse-transaction", () => {
     });
   });
 });
+
+describe("plafond de montant partagé avec la saisie rapide", () => {
+  it("une proposition au plafond passe la validation du formulaire ; au-delà, elle est refusée", async () => {
+    const quick = await import("@/lib/quick-add");
+    const parse = await import("@/lib/ai/parse-transaction");
+    expect(parse.MAX_AMOUNT_CENTS).toBe(quick.MAX_AMOUNT_CENTS);
+    const atCap = normalizeProposal({ ...valid, amountCents: quick.MAX_AMOUNT_CENTS }, ctx);
+    expect(atCap.amountCents).toBe(quick.MAX_AMOUNT_CENTS);
+    const form = quick.validateTransactionForm(quick.proposalToFormValues(atCap, { today: ctx.today, accountId: 6 }));
+    expect(form.ok).toBe(true);
+    expect(() => normalizeProposal({ ...valid, amountCents: quick.MAX_AMOUNT_CENTS + 1 }, ctx)).toThrow(NoAmountError);
+  });
+});

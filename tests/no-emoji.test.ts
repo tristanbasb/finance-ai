@@ -23,6 +23,8 @@ describe("aucun emoji dans le code", () => {
   it("détecte les pictogrammes", () => {
     expect(PICTOGRAPH.test("Alerte : budget dépassé")).toBe(false);
     expect(PICTOGRAPH.test("« Bilan » — 1 234,56 €")).toBe(false);
+    // Typographie courante de l'interface : guillemets, flèche, comparaison, euro.
+    for (const ok of ["«", "»", "→", "≥", "€", "Voir → « Épargne » ≥ 100 €"]) expect(PICTOGRAPH.test(ok)).toBe(false);
     expect(PICTOGRAPH.test("\u{1F514} Alerte")).toBe(true);
     expect(PICTOGRAPH.test("❤️")).toBe(true);
     expect(PICTOGRAPH.test("✅")).toBe(true);
