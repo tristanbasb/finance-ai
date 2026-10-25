@@ -22,7 +22,13 @@ import {
 
 export type { Alert } from "./rules";
 
-export type AlertScope = { txIds?: number[]; prices?: boolean; goals?: boolean };
+export type AlertScope = {
+  txIds?: number[];
+  /** Règle des dépenses inhabituelles sur `txIds` (défaut : oui) ; non pour une simple modification. */
+  expenseRule?: boolean;
+  prices?: boolean;
+  goals?: boolean;
+};
 
 /** Fenêtre de fraîcheur d'une variation de cours : celle d'une actualisation qui vient d'avoir lieu. */
 const PRICE_FRESH_MS = 5 * 60_000;
@@ -262,7 +268,7 @@ async function check(db: Db, scope: AlertScope, deps: Deps): Promise<void> {
       candidates.push(...budgetCandidates(db, [month]));
     }
     const recentFrom = shiftDays(today, -EXPENSE_RECENT_DAYS);
-    if (prefs.unusualExpense) {
+    if (prefs.unusualExpense && scope.expenseRule !== false) {
       const recent = txs.filter((t) => t.date >= recentFrom);
       candidates.push(...expenseCandidates(db, recent, Math.round(prefs.unusualMinEur * 100)));
     }

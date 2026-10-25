@@ -12,7 +12,8 @@ export const PATCH = withErrors(async (req: Request, { params }: Ctx) => {
   const id = await parseId(params);
   const patch = transactionInput.partial().parse(await readJson(req));
   const updated = updateTransaction(getDb(), id, patch);
-  scheduleAlertChecks({ txIds: [id], goals: true });
+  // Modification : budgets et objectifs seulement, la règle des dépenses inhabituelles ne vaut qu'à la création.
+  scheduleAlertChecks({ txIds: [id], goals: true, expenseRule: false });
   return Response.json(updated);
 });
 

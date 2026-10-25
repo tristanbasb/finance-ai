@@ -234,6 +234,14 @@ describe("runAlertChecks", () => {
     expect(db.select().from(alertLog).all().map((r) => r.key)).toEqual([`expense:${big.id}`]);
   });
 
+  it("modification (expenseRule: false) : pas de dépense inhabituelle, budget toujours contrôlé", async () => {
+    const db = freshDb();
+    const cat = expenseCat(db, 10_000);
+    const tx = createTransaction(db, { accountId: account(db).id, categoryId: cat.id, date: "2026-10-10", amount: -50_000, label: "Gros" });
+    await runAlertChecks(db, { txIds: [tx.id], goals: true, expenseRule: false }, { ai: null, today: "2026-10-25" });
+    expect(db.select().from(alertLog).all().map((r) => r.key)).toEqual([`budget:${cat.id}:2026-10:100`, `budget:${cat.id}:2026-10:80`]);
+  });
+
   it("import de 50 transactions déclenchant 30 alertes → 1 seul message", async () => {
     const db = freshDb();
     listen();
