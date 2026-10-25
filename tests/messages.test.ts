@@ -29,13 +29,22 @@ describe("messages : ajout, liste, pagination", () => {
     expect(user(db, "x", 1001).meta).toBeNull();
   });
 
-  it("liste en ordre chronologique avec limit et before", () => {
+  it("liste en ordre chronologique avec limit et before (id)", () => {
     const db = freshDb();
-    for (let i = 1; i <= 5; i++) user(db, `m${i}`, i * 10);
+    const ms = [1, 2, 3, 4, 5].map((i) => user(db, `m${i}`, i * 10));
     expect(listMessages(db, {}).map((m) => m.content)).toEqual(["m1", "m2", "m3", "m4", "m5"]);
     expect(listMessages(db, { limit: 2 }).map((m) => m.content)).toEqual(["m4", "m5"]);
-    expect(listMessages(db, { before: 40, limit: 2 }).map((m) => m.content)).toEqual(["m2", "m3"]);
+    expect(listMessages(db, { before: ms[3].id, limit: 2 }).map((m) => m.content)).toEqual(["m2", "m3"]);
     expect(listMessages(db, { limit: 9999 })).toHaveLength(5);
+  });
+
+  it("pagine sans doublon ni trou avec des created_at identiques", () => {
+    const db = freshDb();
+    for (let i = 1; i <= 7; i++) user(db, `m${i}`, 500);
+    const p1 = listMessages(db, { limit: 3 });
+    const p2 = listMessages(db, { before: p1[0].id, limit: 3 });
+    const p3 = listMessages(db, { before: p2[0].id, limit: 3 });
+    expect([...p3, ...p2, ...p1].map((m) => m.content)).toEqual(["m1", "m2", "m3", "m4", "m5", "m6", "m7"]);
   });
 });
 
@@ -123,5 +132,37 @@ describe("contextMessages", () => {
       asst(db, `a${i}`, i * 2 + 1);
     }
     expect(contextMessages(db, {}).length).toBe(40);
+  });
+
+  it("conserve toujours le dernier élément, tronqué par le début", () => {
+    const db = freshDb();
+    user(db, "x".repeat(50) + "FIN", 1);
+    expect(contextMessages(db, { maxChars: 10 })).toEqual([{ role: "user", content: "xxxxxxxFIN" }]);
+    user(db, "y".repeat(20), 2);
+    const ctx = contextMessages(db, { maxChars: 10 });
+    expect(ctx).toHaveLength(1);
+    expect(ctx[0].content).toBe("y".repeat(10));
+  });
+
+  it("seulement dividers ou assistant seul -> []", () => {
+    const db = freshDb();
+    divider(db, 1);
+    divider(db, 2);
+    expect(contextMessages(db, {})).toEqual([]);
+    asst(db, "a", 3);
+    expect(contextMessages(db, {})).toEqual([]);
+  });
+
+  it("ignore les lignes vides", () => {
+    const db = freshDb();
+    user(db, "q", 1);
+    asst(db, "a1", 2);
+    asst(db, "  ", 3);
+    asst(db, "", 4);
+    asst(db, "a2", 5);
+    expect(contextMessages(db, {})).toEqual([
+      { role: "user", content: "q" },
+      { role: "assistant", content: "a1\n\na2" },
+    ]);
   });
 });

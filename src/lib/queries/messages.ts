@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { Db } from "@/lib/db";
 import { messages } from "@/lib/db/schema";
 
@@ -50,14 +50,14 @@ export function addMessage(
   return toMessage(row);
 }
 
-/** Messages en ordre chronologique ; `before` = created_at exclusif, `limit` 50 (max 200). */
+/** Messages en ordre chronologique ; `before` = id exclusif, `limit` 50 (max 200). */
 export function listMessages(db: Db, opts: { before?: number; limit?: number } = {}): Message[] {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 50), 1), 200);
   const rows = db
     .select()
     .from(messages)
-    .where(opts.before === undefined ? undefined : lt(messages.createdAt, opts.before))
-    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .where(opts.before === undefined ? undefined : lt(messages.id, opts.before))
+    .orderBy(desc(messages.id))
     .limit(limit)
     .all();
   return rows.reverse().map(toMessage);
@@ -105,29 +105,32 @@ export function contextMessages(
     .select({ id: messages.id })
     .from(messages)
     .where(eq(messages.role, "divider"))
-    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .orderBy(desc(messages.id))
     .limit(1)
     .get();
   const rows = db
     .select()
     .from(messages)
-    .orderBy(asc(messages.createdAt), asc(messages.id))
+    .where(lastDivider ? gt(messages.id, lastDivider.id) : undefined)
+    .orderBy(asc(messages.id))
     .all();
-  let start = 0;
-  if (lastDivider) start = rows.findIndex((r) => r.id === lastDivider.id) + 1;
 
   const merged: { role: "user" | "assistant"; content: string }[] = [];
-  for (const r of rows.slice(start)) {
-    if (r.role !== "user" && r.role !== "assistant") continue;
+  for (const r of rows) {
+    if ((r.role !== "user" && r.role !== "assistant") || !r.content.trim()) continue;
     const last = merged[merged.length - 1];
-    if (last && last.role === r.role) last.content += `\n\n${r.content}`;
+    if (last && last.role === r.role) last.content += "\n\n" + r.content;
     else merged.push({ role: r.role, content: r.content });
   }
+  if (!merged.length) return [];
 
-  // Troncature par le début : on garde les plus récents sous les deux limites.
-  let kept = 0;
-  let chars = 0;
-  for (let i = merged.length - 1; i >= 0; i--) {
+  // Le dernier élément est toujours conservé (tronqué par le début si trop long) ;
+  // les limites s'appliquent aux éléments plus anciens.
+  const tail = merged[merged.length - 1];
+  if (tail.content.length > maxChars) tail.content = tail.content.slice(-maxChars);
+  let kept = 1;
+  let chars = tail.content.length;
+  for (let i = merged.length - 2; i >= 0; i--) {
     if (kept >= maxMessages || chars + merged[i].content.length > maxChars) break;
     chars += merged[i].content.length;
     kept++;
