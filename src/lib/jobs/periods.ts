@@ -47,7 +47,8 @@ export function dueDigests(
 export type DigestPeriod = { start: string; end: string; title: string };
 
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const dayMonth = (d: Date) => `${d.getDate() === 1 ? "1er" : d.getDate()} ${MONTHS[d.getMonth()]}`;
+const dayMonth = (d: Date, withYear = false) =>
+  `${d.getDate() === 1 ? "1er" : d.getDate()} ${MONTHS[d.getMonth()]}${withYear ? ` ${d.getFullYear()}` : ""}`;
 
 /** Semaine ISO précédente (lundi → dimanche) ou mois calendaire précédent. */
 export function digestPeriod(kind: DigestKind, now: Date): DigestPeriod {
@@ -57,12 +58,17 @@ export function digestPeriod(kind: DigestKind, now: Date): DigestPeriod {
     return {
       start: iso(first),
       end: iso(last),
-      title: `Bilan de ${MONTHS[first.getMonth()]} ${first.getFullYear()}`,
+      title: `Bilan ${/^[aeiouh]/.test(MONTHS[first.getMonth()]) ? "d'" : "de "}${MONTHS[first.getMonth()]} ${first.getFullYear()}`,
     };
   }
   const dow = now.getDay() || 7;
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow + 1 - 7);
   const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
-  const from = start.getMonth() === end.getMonth() ? String(start.getDate()) : dayMonth(start);
-  return { start: iso(start), end: iso(end), title: `Bilan de la semaine du ${from} au ${dayMonth(end)}` };
+  const from =
+    start.getFullYear() !== end.getFullYear()
+      ? dayMonth(start, true)
+      : start.getMonth() === end.getMonth()
+        ? String(start.getDate())
+        : dayMonth(start);
+  return { start: iso(start), end: iso(end), title: `Bilan de la semaine du ${from} au ${dayMonth(end, start.getFullYear() !== end.getFullYear())}` };
 }

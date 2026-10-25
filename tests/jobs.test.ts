@@ -81,6 +81,11 @@ describe("dueDigests", () => {
 });
 
 describe("digestPeriod", () => {
+  it("semaine à cheval sur deux années : année sur la première date", () => {
+    expect(digestPeriod("weekly", new Date(2026, 0, 5, 9)).title).toBe(
+      "Bilan de la semaine du 29 décembre 2025 au 4 janvier 2026",
+    );
+  });
   it("semaine précédente et mois précédent", () => {
     expect(digestPeriod("weekly", mon(9))).toEqual({
       start: "2026-10-19",
@@ -93,8 +98,14 @@ describe("digestPeriod", () => {
     expect(digestPeriod("monthly", new Date(2026, 10, 2, 9))).toEqual({
       start: "2026-10-01",
       end: "2026-10-31",
-      title: "Bilan de octobre 2026",
+      title: "Bilan d'octobre 2026",
     });
+    const title = (m: number) => digestPeriod("monthly", new Date(2026, m, 3, 9)).title;
+    expect(title(4)).toBe("Bilan d'avril 2026");
+    expect(title(8)).toBe("Bilan d'août 2026");
+    expect(title(3)).toBe("Bilan de mars 2026");
+    expect(title(1)).toBe("Bilan de janvier 2026");
+    expect(title(11)).toBe("Bilan de novembre 2026");
     expect(digestPeriod("monthly", new Date(2027, 0, 5)).start).toBe("2026-12-01");
   });
 });
@@ -143,7 +154,7 @@ describe("tick : bilans", () => {
     await tick(db, mon(9), { ai: fakeAi, generate });
     expect(digestMessages(db)).toHaveLength(0);
     expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()).toBeUndefined();
-    await tick(db, mon(9, 1), { ai: fakeAi, generate });
+    await tick(db, mon(9, 15), { ai: fakeAi, generate });
     expect(generate).toHaveBeenCalledTimes(2);
     expect(digestMessages(db)).toHaveLength(1);
   });
@@ -222,13 +233,95 @@ describe("startScheduler", () => {
 describe("generateDigest", () => {
   it("préfixe le titre et concatène le texte", async () => {
     const db = freshDb();
-    const events = [{ type: "text", text: "Bon" }, { type: "tool", name: "x" }, { type: "text", text: "jour" }, { type: "done" }];
+    const events = [{ type: "text", text: "Bon" }, { type: "tool", name: "x" }, { type: "text", text: "jour" + "x".repeat(200) }, { type: "done" }];
     const chat = await import("@/lib/ai/chat");
     vi.spyOn(chat, "runChat").mockImplementation((async function* () {
       for (const e of events) yield e;
     }) as unknown as typeof chat.runChat);
     const out = await generateDigest(db, fakeAi, "weekly", mon(9));
-    expect(out).toBe("**Bilan de la semaine du 19 au 25 octobre**\n\nBonjour");
+    expect(out).toBe("**Bilan de la semaine du 19 au 25 octobre**\n\nBonjour" + "x".repeat(200));
+  });
+});
+
+describe("generateDigest : texte inutilisable", () => {
+  async function gen(text: string) {
+    const chat = await import("@/lib/ai/chat");
+    vi.spyOn(chat, "runChat").mockImplementation((async function* () {
+      yield { type: "text", text };
+    }) as unknown as typeof chat.runChat);
+    return generateDigest(freshDb(), fakeAi, "weekly", mon(9));
+  }
+  it("trop court → erreur", async () => {
+    await expect(gen("Bonjour")).rejects.toThrow();
+  });
+  it("texte de refus → erreur", async () => {
+    await expect(gen("Je ne peux pas répondre à cette demande.")).rejects.toThrow();
+  });
+  it("200 caractères → accepté", async () => {
+    await expect(gen("a".repeat(200))).resolves.toContain("a".repeat(200));
+  });
+});
+
+describe("tick : politique de reprise", () => {
+  it("échec de publication : réclamation libérée", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const conv = await import("@/lib/assistant/conversation");
+    vi.spyOn(conv, "postAssistantMessage").mockRejectedValueOnce(new Error("dispatch"));
+    const generate = vi.fn(async () => "x");
+    await tick(db, mon(9), { ai: fakeAi, generate });
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()).toBeUndefined();
+  });
+
+  it("3 essais max, espacés de 15 min, puis abandon", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn().mockRejectedValue(new Error("boom"));
+    const run = (min: number) => tick(db, mon(9, min), { ai: fakeAi, generate });
+    await run(0);
+    await run(10); // trop tôt
+    expect(generate).toHaveBeenCalledTimes(1);
+    await run(15);
+    await run(20); // trop tôt
+    expect(generate).toHaveBeenCalledTimes(2);
+    await run(30); // 3e essai
+    expect(generate).toHaveBeenCalledTimes(3);
+    // abandon : réclamation conservée, plus aucun essai
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()?.lastPeriod).toBe("2026-W44");
+    await run(50);
+    await run(59);
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(digestMessages(db)).toHaveLength(0);
+  });
+
+  it("nouvelle période : compteur remis à zéro", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn().mockRejectedValue(new Error("boom"));
+    for (const m of [0, 15, 30]) await tick(db, mon(9, m), { ai: fakeAi, generate });
+    await tick(db, new Date(2026, 10, 2, 9), { ai: fakeAi, generate });
+    expect(generate).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("tick : drapeau d'exécution", () => {
+  afterEach(() => {
+    (globalThis as { __financeTickRunning?: number }).__financeTickRunning = undefined;
+  });
+  it("drapeau récent : tick ignoré ; plus vieux que 10 min : ignoré", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn(async () => "x");
+    const g = globalThis as { __financeTickRunning?: number };
+    g.__financeTickRunning = mon(9).getTime() - 60_000;
+    await tick(db, mon(9), { ai: fakeAi, generate });
+    expect(generate).not.toHaveBeenCalled();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    g.__financeTickRunning = mon(9).getTime() - 11 * 60_000;
+    await tick(db, mon(9), { ai: fakeAi, generate });
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalled();
+    expect(g.__financeTickRunning).toBeUndefined();
   });
 });
 
@@ -246,6 +339,19 @@ describe("routes de réglages", () => {
     expect(await res.json()).toEqual({ weekly: true, monthly: true, hour: 18 });
     expect(await (await getDigests()).json()).toMatchObject({ hour: 18 });
     expect((await put(putDigests, { hour: 30 })).status).toBe(400);
+  });
+
+  it("digests : PUT partiel conserve les réglages désactivés", async () => {
+    await put(putDigests, { weekly: false });
+    const res = await put(putDigests, { hour: 18 });
+    expect(await res.json()).toEqual({ weekly: false, monthly: true, hour: 18 });
+  });
+
+  it("alertes : PUT partiel conserve les réglages désactivés", async () => {
+    await put(putAlerts, { enabled: false });
+    const res = await put(putAlerts, { unusualMinEur: 50 });
+    expect(await res.json()).toMatchObject({ enabled: false, unusualMinEur: 50, budget: true });
+    expect((await put(putAlerts, { unusualMinEur: "x" })).status).toBe(400);
   });
 
   it("alertes : défauts, fusion partielle, validation", async () => {

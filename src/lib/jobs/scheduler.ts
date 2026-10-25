@@ -39,9 +39,32 @@ function releaseJob(db: Db, job: string, previous: string | undefined): void {
   else db.update(jobRuns).set({ lastPeriod: previous }).where(eq(jobRuns.job, job)).run();
 }
 
+export const MAX_DIGEST_ATTEMPTS = 3;
+export const DIGEST_RETRY_DELAY_MS = 15 * 60_000;
+export const TICK_STALE_MS = 10 * 60_000;
+const retrySchema = z.object({ period: z.string(), attempts: z.number(), nextAt: z.number() });
+const retryKey = (kind: DigestKind) => `digest_retry_${kind}`;
+
+/** Échec de génération/publication : au plus 3 essais par période, espacés d'au moins 15 min. */
+function recordFailure(db: Db, kind: DigestKind, period: string, previous: string | undefined, now: Date, err: unknown) {
+  const state = getSetting(db, retryKey(kind), retrySchema, null);
+  const attempts = (state?.period === period ? state.attempts : 0) + 1;
+  if (attempts >= MAX_DIGEST_ATTEMPTS) {
+    // Abandon pour cette période : la réclamation est conservée.
+    setSetting(db, retryKey(kind), { period, attempts, nextAt: Number.MAX_SAFE_INTEGER });
+    console.error(`[jobs] bilan ${kind} abandonné pour ${period} après ${attempts} échecs :`, err);
+    return;
+  }
+  releaseJob(db, kind, previous);
+  setSetting(db, retryKey(kind), { period, attempts, nextAt: now.getTime() + DIGEST_RETRY_DELAY_MS });
+  console.error(`[jobs] bilan ${kind} échoué (essai ${attempts}/${MAX_DIGEST_ATTEMPTS}) :`, err);
+}
+
 async function runDigest(db: Db, kind: DigestKind, now: Date, deps: TickDeps): Promise<void> {
   const period = kind === "weekly" ? isoWeek(now) : monthKey(now);
   const previous = lastPeriod(db, kind);
+  const retry = getSetting(db, retryKey(kind), retrySchema, null);
+  if (retry?.period === period && retry.nextAt > now.getTime()) return;
   if (!claimJob(db, kind, period, now.getTime())) return;
   const ai = deps.ai === undefined ? getAi(db) : deps.ai;
   if (!ai) {
@@ -52,15 +75,12 @@ async function runDigest(db: Db, kind: DigestKind, now: Date, deps: TickDeps): P
     }
     return;
   }
-  let content: string;
   try {
-    content = await (deps.generate ?? generateDigest)(db, ai, kind, now);
+    const content = await (deps.generate ?? generateDigest)(db, ai, kind, now);
+    await postAssistantMessage(db, { kind, content, meta: { period } });
   } catch (err) {
-    releaseJob(db, kind, previous);
-    console.error(`[jobs] bilan ${kind} échoué (nouvel essai au prochain passage) :`, err);
-    return;
+    recordFailure(db, kind, period, previous, now, err);
   }
-  await postAssistantMessage(db, { kind, content, meta: { period } });
 }
 
 async function runPrices(db: Db, now: Date, deps: TickDeps): Promise<void> {
@@ -79,9 +99,13 @@ async function runPrices(db: Db, now: Date, deps: TickDeps): Promise<void> {
 
 /** Un passage du planificateur : bilans dus puis cours horaires. Ne lève jamais. */
 export async function tick(db: Db, now: Date, deps: TickDeps = {}): Promise<void> {
-  const g = globalThis as { __financeTickRunning?: boolean };
-  if (g.__financeTickRunning) return;
-  g.__financeTickRunning = true;
+  const g = globalThis as { __financeTickRunning?: number };
+  const startedAt = g.__financeTickRunning;
+  if (startedAt !== undefined) {
+    if (now.getTime() - startedAt <= TICK_STALE_MS) return;
+    console.warn("[jobs] drapeau d'exécution périmé (plus de 10 min) ignoré");
+  }
+  g.__financeTickRunning = now.getTime();
   try {
     try {
       const due = dueDigests(now, digestPrefs(db), {
@@ -104,7 +128,7 @@ export async function tick(db: Db, now: Date, deps: TickDeps = {}): Promise<void
       console.error("[jobs] cours :", err);
     }
   } finally {
-    g.__financeTickRunning = false;
+    g.__financeTickRunning = undefined;
   }
 }
 

@@ -5,6 +5,9 @@ import { todayLocal } from "@/lib/dates";
 import { digestPeriod, type DigestKind } from "./periods";
 
 export const DIGEST_TIMEOUT_MS = 120_000;
+export const MIN_DIGEST_LENGTH = 200;
+/** Texte de repli de `runChat` quand le modèle ne produit aucun texte. */
+const REFUSAL_TEXT = "Je ne peux pas répondre à cette demande.";
 export const AI_REQUIRED_NOTICE =
   "Les bilans automatiques nécessitent l'assistant IA : ajoutez votre clé API Claude (Réglages → Assistant IA).";
 
@@ -32,6 +35,6 @@ export async function generateDigest(db: Db, ai: Ai, kind: DigestKind, now: Date
     if (e.type === "text") body += e.text;
   }
   body = body.trim();
-  if (!body) throw new Error("bilan vide");
+  if (body.length < MIN_DIGEST_LENGTH || body === REFUSAL_TEXT) throw new Error("bilan inutilisable");
   return `**${digestPeriod(kind, now).title}**\n\n${body}`;
 }

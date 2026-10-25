@@ -65,3 +65,14 @@ export function setModelSetting(db: Db, model: string | null): void {
   if (model === null) deleteSetting(db, "claude_model");
   else setSetting(db, "claude_model", model);
 }
+
+/**
+ * Fusionne un corps de PUT partiel avec les réglages actuels : seules les clés réellement
+ * présentes dans `raw` écrasent l'existant (le `.default()` de zod 4 s'appliquerait sinon aux
+ * clés absentes). L'objet fusionné est validé par le schéma complet.
+ */
+export function mergePrefs<T extends z.ZodObject>(schema: T, current: z.infer<T>, raw: unknown): z.infer<T> {
+  const parsed = schema.partial().parse(raw) as Record<string, unknown>;
+  const present = Object.fromEntries(Object.entries(parsed).filter(([k]) => Object.hasOwn(raw as object, k)));
+  return schema.parse({ ...current, ...present });
+}
