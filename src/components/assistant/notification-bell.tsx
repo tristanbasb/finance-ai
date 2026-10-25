@@ -154,7 +154,7 @@ export function NotificationBell({
             // En-tête mobile : menu sur toute la largeur sous l'en-tête ; ordinateur : sous la cloche.
             placement === "dropdown"
               ? "absolute right-0 top-full mt-2 w-[22rem]"
-              : "fixed inset-x-4 top-[calc(3.5rem+env(safe-area-inset-top)+0.5rem)]",
+              : "fixed inset-x-4 top-[calc(var(--mobile-header-h)+0.5rem)]",
           )}
         >
           <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
@@ -165,7 +165,7 @@ export function NotificationBell({
                 role="menuitem"
                 onClick={() => void markAll()}
                 disabled={marking}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[12px] pointer-coarse:h-10 font-medium text-accent hover:bg-accent-soft disabled:opacity-60"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[12px] pointer-coarse:h-11 font-medium text-accent hover:bg-accent-soft disabled:opacity-60"
               >
                 <CheckCheck aria-hidden className="size-3.5" />
                 Tout marquer comme lu
@@ -188,7 +188,7 @@ export function NotificationBell({
                       close(false);
                       openAt(m.id);
                     }}
-                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                   >
                     <KindIcon kind={m.kind} className="mt-0.5" />
                     <span className="min-w-0 flex-1">

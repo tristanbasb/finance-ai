@@ -126,64 +126,67 @@ export default async function BudgetsPage({
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-5">
-        <Card className="lg:col-span-2 lg:self-start">
-          <CardHeader>
-            <CardTitle>Dépenses par catégorie</CardTitle>
-            <CardDescription className="first-letter:uppercase">{monthLabel}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {slices.length === 0 ? (
-              <EmptyState
-                icon={ChartPie}
-                title="Aucune dépense ce mois-ci"
-                description="Ajoutez une opération pour voir la répartition de vos dépenses."
-                action={<QuickAddButton variant="secondary" size="sm" />}
-              />
-            ) : (
-              <CategoryDonut slices={slices} />
-            )}
-          </CardContent>
-        </Card>
+      {/* Deux colonnes selon la largeur réelle du contenu (colonne Claude affichée ou non), pas celle de la fenêtre. */}
+      <div className="@container">
+        <div className="grid grid-cols-1 gap-4 sm:gap-5 @2xl:grid-cols-2">
+          <Card className="@2xl:self-start">
+            <CardHeader>
+              <CardTitle>Dépenses par catégorie</CardTitle>
+              <CardDescription className="first-letter:uppercase">{monthLabel}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {slices.length === 0 ? (
+                <EmptyState
+                  icon={ChartPie}
+                  title="Aucune dépense ce mois-ci"
+                  description="Ajoutez une opération pour voir la répartition de vos dépenses."
+                  action={<QuickAddButton variant="secondary" size="sm" />}
+                />
+              ) : (
+                <CategoryDonut slices={slices} />
+              )}
+            </CardContent>
+          </Card>
 
-        <Card className="lg:col-span-3">
-          <CardHeader
-            action={
-              <Link href="/settings#categories" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                <Settings2 aria-hidden />
-                Gérer les catégories
-              </Link>
-            }
-          >
-            <CardTitle>Catégories</CardTitle>
-            <CardDescription>Touchez un budget pour le modifier.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {rows.length === 0 ? (
-              <EmptyState
-                icon={Target}
-                title="Aucune catégorie de dépense"
-                description="Créez des catégories pour fixer un budget et suivre vos dépenses."
-                action={
-                  <Link href="/settings#categories" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                    <Settings2 aria-hidden />
-                    Gérer les catégories
-                  </Link>
-                }
-              />
-            ) : (
-              <>
-                <BudgetList rows={rows} />
-                {uncategorized > 0 && (
-                  <p className="num mt-4 flex items-center justify-between gap-3 border-t border-border pt-4 text-[13px] text-muted">
-                    <span>Sans catégorie (pas de budget possible)</span>
-                    <span className="font-medium text-fg">{formatEUR(uncategorized)}</span>
-                  </p>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader
+              action={
+                <Link href="/settings#categories" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                  <Settings2 aria-hidden />
+                  Gérer les catégories
+                </Link>
+              }
+            >
+              <CardTitle>Catégories</CardTitle>
+              <CardDescription>Touchez un budget pour le modifier.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {rows.length === 0 ? (
+                <EmptyState
+                  icon={Target}
+                  title="Aucune catégorie de dépense"
+                  description="Créez des catégories pour fixer un budget et suivre vos dépenses."
+                  action={
+                    <Link href="/settings#categories" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                      <Settings2 aria-hidden />
+                      Gérer les catégories
+                    </Link>
+                  }
+                />
+              ) : (
+                <>
+                  <BudgetList rows={rows} />
+                  {uncategorized > 0 && (
+                    <p className="num mt-4 flex items-center justify-between gap-3 border-t border-border pt-4 text-[13px] text-muted">
+                      <span>Sans catégorie (pas de budget possible)</span>
+                      <span className="font-medium text-fg">{formatEUR(uncategorized)}</span>
+                    </p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <AiInsightsCard month={month} monthLabel={monthLabel} />

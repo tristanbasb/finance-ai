@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CircleAlert, Pencil, Plus, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,17 @@ export function BudgetRow({ row }: { row: BudgetRowData }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const finished = useRef(false);
+  // Échap ou Entrée : le focus revient au bouton du budget une fois le champ refermé.
+  const refocus = useRef(false);
+
+  useEffect(() => {
+    if (!editing && refocus.current) {
+      refocus.current = false;
+      buttonRef.current?.focus();
+    }
+  }, [editing]);
 
   // Valable tant que le serveur n'a pas renvoyé un budget différent de celui d'avant la modification.
   const budget = optimistic && optimistic.base === row.budget ? optimistic.value : row.budget;
@@ -47,13 +57,24 @@ export function BudgetRow({ row }: { row: BudgetRowData }) {
     setEditing(false);
   }
 
-  async function save() {
+  /**
+   * Enregistre la saisie. Valeur invalide : Entrée garde le champ ouvert avec l'erreur ; une
+   * perte de focus le referme sans rien changer et signale l'erreur par un toast (un champ
+   * resté ouvert sans focus ne pourrait plus être annulé par Échap).
+   */
+  async function save(trigger: "submit" | "blur") {
     if (finished.current) return;
     const result = parseBudgetInput(inputRef.current?.value ?? "");
     if (!result.ok) {
-      setError(result.error);
+      if (trigger === "submit") {
+        setError(result.error);
+        return;
+      }
+      cancel();
+      toast.error("Budget non modifié", { description: `${row.name} : ${result.error}` });
       return;
     }
+    if (trigger === "submit") refocus.current = true;
     finished.current = true;
     setEditing(false);
     setError(null);
@@ -80,12 +101,13 @@ export function BudgetRow({ row }: { row: BudgetRowData }) {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    void save();
+    void save("submit");
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
+      refocus.current = true;
       cancel();
     }
   }
@@ -145,7 +167,7 @@ export function BudgetRow({ row }: { row: BudgetRowData }) {
                 aria-describedby={error ? errorId : undefined}
                 onFocus={(e) => e.currentTarget.select()}
                 onKeyDown={onKeyDown}
-                onBlur={() => void save()}
+                onBlur={() => void save("blur")}
                 className={cn(controlClasses, "num w-36 pr-8 text-right")}
               />
               <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted">
@@ -162,6 +184,7 @@ export function BudgetRow({ row }: { row: BudgetRowData }) {
           </form>
         ) : (
           <button
+            ref={buttonRef}
             type="button"
             onClick={startEditing}
             aria-label={`Modifier le budget de ${row.name}`}

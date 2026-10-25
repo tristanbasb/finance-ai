@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { useLogout } from "@/components/logout-button";
 
 const itemClass =
-  "flex h-11 w-full items-center gap-3 px-4 text-left text-sm text-fg transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none disabled:opacity-60";
+  "flex h-11 w-full items-center gap-3 px-4 text-left text-sm text-fg transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
 
 /**
  * Avatar de l'en-tête mobile → menu du compte (Assistant plein écran, Réglages, Déconnexion).

@@ -33,6 +33,8 @@ export function Switch({ checked, onChange, label, description, disabled, classN
         onClick={() => onChange(!checked)}
         className={cn(
           "relative mt-0.5 inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border border-transparent",
+          // Zone tactile de 44 px autour de la piste de 28 px.
+          "after:absolute after:-inset-2 after:content-['']",
           "transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
           "disabled:cursor-not-allowed disabled:opacity-50",
           checked ? "bg-brand-gradient shadow-glow" : "bg-border-strong",

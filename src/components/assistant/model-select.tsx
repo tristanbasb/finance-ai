@@ -86,7 +86,7 @@ export function ModelSelect({
         className={cn(
           "cursor-pointer appearance-none truncate rounded-lg border border-border bg-surface text-fg",
           "transition-[border-color] duration-150 hover:border-border-strong disabled:cursor-wait disabled:opacity-60",
-          size === "compact" ? "h-8 max-w-[11.5rem] pl-2.5 pr-7 text-[13px]" : "h-10 w-full pl-3 pr-9 text-sm",
+          size === "compact" ? "h-8 max-w-[11.5rem] pl-2.5 pr-7 text-[13px] pointer-coarse:h-11" : "h-10 w-full pl-3 pr-9 text-sm",
         )}
       >
         {models === null ? (
