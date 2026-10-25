@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { Db } from "@/lib/db";
 import { accounts, aiActions, categories, goals, holdings, transactions } from "@/lib/db/schema";
@@ -19,10 +19,12 @@ const DAY_MS = 24 * 3600 * 1000;
 /** Raison renvoyée pour un id absent du journal (404 côté API). */
 export const ACTION_NOT_FOUND = "Action introuvable.";
 export const UNDO_FAILED = "Annulation impossible : les données ont changé depuis.";
+export const ALREADY_UNDONE = "Déjà annulée.";
+export const TOO_OLD = "Plus de 24 h : annulation impossible.";
 
 const TABLES = { transactions, categories, goals, accounts, holdings } as const;
 const TABLE_LABELS: Record<ChangeTable, string> = {
-  transactions: "transaction",
+  transactions: "opération",
   categories: "catégorie",
   goals: "objectif",
   accounts: "compte",
@@ -170,12 +172,27 @@ export function actionStatus(db: Db, id: number, now = Date.now()): ActionStatus
   const parsed = parseChanges(row.changes);
   const changes = parsed ?? [];
   const base = { summary: row.summary, undoneAt: row.undoneAt, createdAt: row.createdAt, tool: row.tool, changes };
-  if (row.undoneAt !== null) return { ...base, undoable: false, reason: "Déjà annulée." };
-  if (now - row.createdAt > DAY_MS) return { ...base, undoable: false, reason: "Plus de 24 h : annulation impossible." };
+  if (row.undoneAt !== null) return { ...base, undoable: false, reason: ALREADY_UNDONE };
+  if (now - row.createdAt > DAY_MS) return { ...base, undoable: false, reason: TOO_OLD };
   if (parsed === null) return { ...base, undoable: false, reason: "Journal illisible : annulation impossible." };
   const conflict = findConflict(db, netChanges(changes));
   if (conflict) return { ...base, undoable: false, reason: `Modifié depuis : ${conflict}` };
   return { ...base, undoable: true };
+}
+
+/**
+ * Id de l'action la plus récente encore annulable (moins de 24 h, non annulée, données
+ * inchangées depuis), ou null. Utilisé par `/annuler` sur Telegram.
+ */
+export function lastUndoableActionId(db: Db, now = Date.now()): number | null {
+  const rows = db
+    .select({ id: aiActions.id })
+    .from(aiActions)
+    .where(and(isNull(aiActions.undoneAt), gte(aiActions.createdAt, now - DAY_MS)))
+    .orderBy(desc(aiActions.id))
+    .all();
+  for (const { id } of rows) if (actionStatus(db, id, now).undoable) return id;
+  return null;
 }
 
 export function undoAction(db: Db, id: number, now = Date.now()): { ok: true; summary: string } | { ok: false; reason: string } {

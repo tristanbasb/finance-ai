@@ -1,12 +1,22 @@
 import { BadRequestError } from "@/lib/api";
 import { aiErrorInfo, effectiveModel, getAi, type Ai } from "@/lib/ai/client";
 import { listModels } from "@/lib/ai/models";
+import { ACTION_NOT_FOUND, ALREADY_UNDONE, actionStatus, lastUndoableActionId, TOO_OLD } from "@/lib/ai/actions";
 import { ModelUnavailableError, respond } from "@/lib/assistant/conversation";
+import { UNDONE_PREFIX, undoAndAnnounce } from "@/lib/assistant/undo";
 import { registerChannel } from "@/lib/assistant/dispatch";
 import type { Db } from "@/lib/db";
 import { addMessage, type Message } from "@/lib/queries/messages";
 import { setModelSetting } from "@/lib/settings";
-import { isParseEntitiesError, telegramApi, TelegramError, type TelegramApi, type TelegramUpdate } from "./api";
+import {
+  isParseEntitiesError,
+  telegramApi,
+  TelegramError,
+  type InlineKeyboardMarkup,
+  type TelegramApi,
+  type TelegramCallbackQuery,
+  type TelegramUpdate,
+} from "./api";
 import { splitMessage, toTelegramHtml } from "./format";
 import { consumeLinkCode, linkChat, linkedChatId, telegramToken } from "./link";
 
@@ -23,6 +33,14 @@ export const NEW_CONVERSATION_MESSAGE = "Nouvelle conversation.";
 export const BILAN_PROMPT = "Fais-moi un bilan de mon mois en cours.";
 export const GENERIC_ERROR_MESSAGE = "Une erreur est survenue. Réessayez.";
 export const RESPOND_TIMEOUT_MESSAGE = "La réponse a pris trop de temps. Réessayez.";
+export const NOTHING_TO_UNDO_MESSAGE = "Aucune action récente à annuler.";
+/** Notification affichée après un appui réussi sur « Annuler ». */
+export const UNDO_DONE_ANSWER = "Action annulée";
+export const UNDO_BUTTON_PREFIX = "Annuler : ";
+/** Longueur maximale du libellé d'un bouton « Annuler : … » (résumé tronqué au-delà). */
+export const UNDO_BUTTON_MAX = 64;
+/** Limite Telegram du texte de `answerCallbackQuery`. */
+const CALLBACK_TEXT_MAX = 200;
 
 export const MAX_TEXT_LENGTH = 8000;
 export const TYPING_INTERVAL_MS = 4000;
@@ -36,8 +54,10 @@ const START_MAX_FAILURES = 5;
 
 const HELP = [
   "<b>Finance AI</b> : posez votre question, je réponds à partir de vos données.",
+  "Sur demande, je peux aussi modifier vos données (ajouter une opération, changer un budget…), si c'est autorisé dans Réglages. Le bouton « Annuler » sous ma réponse défait une modification pendant 24 h.",
   "",
   "/bilan : bilan du mois en cours",
+  "/annuler : annule ma dernière modification",
   "/nouveau : nouvelle conversation",
   "/modele : modèle Claude utilisé (/modele &lt;id&gt; pour le changer)",
   "/aide : cette aide",
@@ -79,16 +99,62 @@ export function createBotContext(
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** Envoie du markdown de l'assistant : découpé, converti en HTML, repli en texte brut si refusé. */
-export async function sendMarkdown(api: TelegramApi, chatId: string, markdown: string): Promise<void> {
-  for (const chunk of splitMessage(markdown)) {
+/**
+ * Envoie du markdown de l'assistant : découpé, converti en HTML, repli en texte brut si refusé.
+ * `replyMarkup` (clavier en ligne) est attaché au dernier morceau.
+ */
+export async function sendMarkdown(
+  api: TelegramApi,
+  chatId: string,
+  markdown: string,
+  replyMarkup?: InlineKeyboardMarkup,
+): Promise<void> {
+  const chunks = splitMessage(markdown);
+  for (const [i, chunk] of chunks.entries()) {
+    const markup = i === chunks.length - 1 && replyMarkup ? { replyMarkup } : {};
     try {
-      await api.sendMessage(chatId, toTelegramHtml(chunk));
+      await api.sendMessage(chatId, toTelegramHtml(chunk), markup);
     } catch (err) {
       if (!isParseEntitiesError(err)) throw err;
-      await api.sendMessage(chatId, chunk, { plain: true });
+      await api.sendMessage(chatId, chunk, { plain: true, ...markup });
     }
   }
+}
+
+const undoData = (id: number) => `undo:${id}`;
+
+/** `undo:<id>` strict (entier positif sûr, sans zéro initial) ; null sinon. */
+export function parseUndoData(data: unknown): number | null {
+  if (typeof data !== "string") return null;
+  const m = /^undo:([1-9]\d{0,14})$/.exec(data);
+  if (!m) return null;
+  const id = Number(m[1]);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+function truncate(text: string, max: number): string {
+  const chars = [...text.replace(/\s+/g, " ").trim()];
+  return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("").trimEnd()}…`;
+}
+
+/** Ids d'actions de `meta.actions` (entiers positifs), ou liste vide. */
+function messageActionIds(m: Message): number[] {
+  const raw = m.meta?.actions;
+  return Array.isArray(raw) ? raw.filter((id): id is number => Number.isSafeInteger(id) && id > 0) : [];
+}
+
+/**
+ * Clavier « Annuler : <résumé> » (un bouton par ligne et par action du message), ou undefined
+ * sans action. Les libellés portent le résumé : ils disent aussi ce qui a été modifié.
+ */
+export function undoKeyboard(ctx: BotContext, m: Message): InlineKeyboardMarkup | undefined {
+  const rows = messageActionIds(m).flatMap((id) => {
+    const { summary, reason } = actionStatus(ctx.db, id, ctx.now());
+    if (reason === ACTION_NOT_FOUND) return [];
+    const label = truncate(summary || "modification", UNDO_BUTTON_MAX - UNDO_BUTTON_PREFIX.length);
+    return [[{ text: `${UNDO_BUTTON_PREFIX}${label}`, callback_data: undoData(id) }]];
+  });
+  return rows.length ? { inline_keyboard: rows } : undefined;
 }
 
 /** Texte d'erreur sûr pour les journaux (le token est déjà expurgé des `TelegramError`). */
@@ -201,15 +267,98 @@ async function converse(ctx: BotContext, chatId: string, content: string): Promi
   if (linkedChatId(ctx.db) !== chatId) return;
   // La réponse n'est pas diffusée vers le canal d'origine : on l'envoie ici (texte partiel
   // suffixé si le délai a coupé la génération ; rien du tout : message d'excuse).
-  if (reply) await sendMarkdown(ctx.api, chatId, reply.content);
+  if (reply) await sendMarkdown(ctx.api, chatId, reply.content, undoKeyboard(ctx, reply));
   else if (signal.aborted) await ctx.api.sendMessage(chatId, escapeHtml(RESPOND_TIMEOUT_MESSAGE));
+}
+
+/** Répond à un callback sans jamais lever (requête expirée, réseau). */
+async function answerCallback(ctx: BotContext, id: string, text?: string): Promise<void> {
+  try {
+    if (text) await ctx.api.answerCallbackQuery(id, truncate(text, CALLBACK_TEXT_MAX));
+    else await ctx.api.answerCallbackQuery(id);
+  } catch (err) {
+    console.error(`[telegram] échec de answerCallbackQuery : ${describe(err)}`);
+  }
+}
+
+/** Retire le bouton de l'action `id` du clavier du message (tout le clavier s'il n'en reste aucun). */
+async function removeUndoButton(ctx: BotContext, chatId: string, query: TelegramCallbackQuery, id: number): Promise<void> {
+  const message = query.message;
+  if (!message || typeof message.message_id !== "number") return;
+  const rows = message.reply_markup?.inline_keyboard;
+  const kept = (Array.isArray(rows) ? rows : [])
+    .map((row) => (Array.isArray(row) ? row.filter((b) => b?.callback_data !== undoData(id)) : []))
+    .filter((row) => row.length > 0);
+  try {
+    await ctx.api.editMessageReplyMarkup(chatId, message.message_id, kept.length ? { inline_keyboard: kept } : null);
+  } catch (err) {
+    console.error(`[telegram] échec de la mise à jour du clavier : ${describe(err)}`);
+  }
+}
+
+/** Annule l'action `id` (bouton ou `/annuler`) ; le message système n'est pas renvoyé à Telegram. */
+async function undoFromTelegram(ctx: BotContext, id: number) {
+  const result = await undoAndAnnounce(ctx.db, id, { except: "telegram", now: ctx.now() });
+  return { result, text: result.ok ? `${UNDONE_PREFIX}${result.summary}` : result.reason };
+}
+
+/**
+ * Appui sur un bouton. Accepté seulement depuis le chat relié (chat privé dont l'id et celui de
+ * l'utilisateur sont ceux du chat relié) avec des données `undo:<id>` strictes ; sinon simple
+ * accusé de réception, sans rien lire ni modifier. Ne lève jamais vers la boucle de polling.
+ */
+async function handleCallback(ctx: BotContext, query: TelegramCallbackQuery): Promise<void> {
+  if (typeof query.id !== "string") return;
+  const linked = linkedChatId(ctx.db);
+  const chat = query.message?.chat;
+  const fromLinked =
+    linked !== null && chat?.type === "private" && String(chat.id) === linked && String(query.from?.id) === linked;
+  const id = fromLinked ? parseUndoData(query.data) : null;
+  if (linked === null || id === null) {
+    await answerCallback(ctx, query.id);
+    return;
+  }
+  let outcome: Awaited<ReturnType<typeof undoFromTelegram>>;
+  try {
+    outcome = await undoFromTelegram(ctx, id);
+  } catch (err) {
+    console.error(`[telegram] échec de l'annulation : ${describe(err)}`);
+    await answerCallback(ctx, query.id, GENERIC_ERROR_MESSAGE);
+    return;
+  }
+  const { result, text } = outcome;
+  await answerCallback(ctx, query.id, result.ok ? UNDO_DONE_ANSWER : result.reason);
+  // Bouton devenu inutile : annulée, déjà annulée, trop ancienne ou introuvable.
+  const final = result.ok || result.notFound || result.reason === ALREADY_UNDONE || result.reason === TOO_OLD;
+  if (final) await removeUndoButton(ctx, linked, query, id);
+  try {
+    await ctx.api.sendMessage(linked, escapeHtml(text));
+  } catch (err) {
+    console.error(`[telegram] échec de l'envoi du résultat de l'annulation : ${describe(err)}`);
+  }
+}
+
+/** `/annuler` : annule la dernière action encore annulable. */
+async function handleUndoCommand(ctx: BotContext, chatId: string): Promise<void> {
+  const id = lastUndoableActionId(ctx.db, ctx.now());
+  if (id === null) {
+    await ctx.api.sendMessage(chatId, escapeHtml(NOTHING_TO_UNDO_MESSAGE));
+    return;
+  }
+  const { text } = await undoFromTelegram(ctx, id);
+  await ctx.api.sendMessage(chatId, escapeHtml(text));
 }
 
 /**
  * Traite une mise à jour Telegram. Seuls les messages de chats privés sont examinés ; un chat
  * autre que le chat relié ne reçoit que « Ce bot est privé. » (ou la réponse à `/start <code>`).
+ * Les appuis sur un bouton (`callback_query`) passent par `handleCallback`.
  */
 export async function handleUpdate(ctx: BotContext, update: TelegramUpdate): Promise<void> {
+  if (update.callback_query) {
+    await handleCallback(ctx, update.callback_query);
+    return;
+  }
   const message = update.message;
   if (!message || message.chat?.type !== "private") return;
   const chatId = String(message.chat.id);
@@ -246,6 +395,9 @@ export async function handleUpdate(ctx: BotContext, update: TelegramUpdate): Pro
     case "modele":
       await handleModel(ctx, chatId, command.args);
       return;
+    case "annuler":
+      await handleUndoCommand(ctx, chatId);
+      return;
     default:
       // /aide, /start (déjà relié), commande inconnue.
       await ctx.api.sendMessage(chatId, HELP);
@@ -258,7 +410,9 @@ export async function sendToLinkedChat(ctx: BotContext, m: Message): Promise<voi
   const chatId = linkedChatId(ctx.db);
   if (!chatId) return;
   const prefix = m.kind === "alert" ? "Alerte : " : m.kind === "weekly" || m.kind === "monthly" ? "Bilan : " : "";
-  await sendMarkdown(ctx.api, chatId, prefix + m.content);
+  // Réponse de Claude venue de l'app avec des modifications : mêmes boutons « Annuler ».
+  const keyboard = m.kind === "chat" ? undoKeyboard(ctx, m) : undefined;
+  await sendMarkdown(ctx.api, chatId, prefix + m.content, keyboard);
 }
 
 export const POLL_TIMEOUT_SEC = 30;

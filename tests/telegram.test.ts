@@ -3,14 +3,23 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createDb, getDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { messages as messagesTable } from "@/lib/db/schema";
+import { accounts, messages as messagesTable, transactions } from "@/lib/db/schema";
+import { actionStatus, recordAction } from "@/lib/ai/actions";
+import { UNDONE_PREFIX } from "@/lib/assistant/undo";
 import { addMessage, listMessages, type Message } from "@/lib/queries/messages";
 import { getModelSetting, getSetting, setSetting } from "@/lib/settings";
 import type { Ai } from "@/lib/ai/client";
 import { systemPrompt } from "@/lib/ai/chat";
 import { dispatch } from "@/lib/assistant/dispatch";
 import { ModelUnavailableError, respond } from "@/lib/assistant/conversation";
-import { resetBotUsernameCache, telegramApi, TelegramError, type TelegramApi, type TelegramUpdate } from "@/lib/telegram/api";
+import {
+  resetBotUsernameCache,
+  telegramApi,
+  TelegramError,
+  type InlineKeyboardMarkup,
+  type TelegramApi,
+  type TelegramUpdate,
+} from "@/lib/telegram/api";
 import { splitMessage, toTelegramHtml } from "@/lib/telegram/format";
 import {
   CHAT_ID_KEY,
@@ -27,13 +36,16 @@ import {
   createBotContext,
   handleUpdate,
   NON_TEXT_MESSAGE,
+  NOTHING_TO_UNDO_MESSAGE,
   PRIVATE_MESSAGE,
   PRIVATE_NOTICE_CAP,
   RESPOND_TIMEOUT_MS,
   RESPOND_TIMEOUT_MESSAGE,
+  sendToLinkedChat,
   startBot,
   TELEGRAM_HINT,
   TOO_LONG_MESSAGE,
+  UNDO_DONE_ANSWER,
   type BotContext,
 } from "@/lib/telegram/bot";
 import { DELETE as linkDELETE, POST as linkPOST } from "@/app/api/telegram/link/route";
@@ -49,7 +61,7 @@ function freshDb() {
 }
 type TestDb = ReturnType<typeof freshDb>;
 
-type Sent = { chatId: string; text: string; plain: boolean };
+type Sent = { chatId: string; text: string; plain: boolean; markup?: InlineKeyboardMarkup };
 
 /** API Telegram simulée : enregistre les envois ; `failHtml` refuse le HTML (400). */
 function fakeApi(opts: { failHtml?: boolean } = {}) {
@@ -58,12 +70,14 @@ function fakeApi(opts: { failHtml?: boolean } = {}) {
   const api: TelegramApi = {
     getMe: vi.fn(async () => ({ id: 1, username: "finance_bot" })),
     getUpdates: vi.fn(async () => []),
-    sendMessage: vi.fn(async (chatId: string, text: string, o?: { plain?: boolean }) => {
+    sendMessage: vi.fn(async (chatId: string, text: string, o?: { plain?: boolean; replyMarkup?: InlineKeyboardMarkup }) => {
       if (opts.failHtml && !o?.plain) {
         throw new TelegramError("Telegram sendMessage : Bad Request: can't parse entities", 400);
       }
-      sent.push({ chatId, text, plain: !!o?.plain });
+      sent.push({ chatId, text, plain: !!o?.plain, ...(o?.replyMarkup ? { markup: o.replyMarkup } : {}) });
     }),
+    answerCallbackQuery: vi.fn(async () => {}),
+    editMessageReplyMarkup: vi.fn(async () => {}),
     sendChatAction: vi.fn(async (chatId: string) => {
       actions.push(chatId);
     }),
@@ -150,7 +164,7 @@ describe("telegramApi", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(`https://api.telegram.org/bot${TOKEN}/getUpdates`);
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toMatchObject({ offset: 5, timeout: 30, allowed_updates: ["message"] });
+    expect(JSON.parse(String(init?.body))).toMatchObject({ offset: 5, timeout: 30, allowed_updates: ["message", "callback_query"] });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -183,6 +197,23 @@ describe("telegramApi", () => {
     const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies[0]).toMatchObject({ chat_id: "9", text: "<b>x</b>", parse_mode: "HTML" });
     expect(bodies[1].parse_mode).toBeUndefined();
+  });
+
+  it("sendMessage avec clavier, answerCallbackQuery, editMessageReplyMarkup", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ ok: true, result: true }));
+    const api = telegramApi(TOKEN, fetchMock as unknown as typeof fetch);
+    const markup = { inline_keyboard: [[{ text: "Annuler : x", callback_data: "undo:1" }]] };
+    await api.sendMessage("9", "x", { replyMarkup: markup });
+    await api.answerCallbackQuery("cb", "Action annulée");
+    await api.answerCallbackQuery("cb2");
+    await api.editMessageReplyMarkup("9", 10, null);
+    await api.editMessageReplyMarkup("9", 10, markup);
+    const calls = fetchMock.mock.calls.map(([url, init]) => [String(url).split("/").pop(), JSON.parse(String(init?.body))]);
+    expect(calls[0]).toEqual(["sendMessage", expect.objectContaining({ reply_markup: markup })]);
+    expect(calls[1]).toEqual(["answerCallbackQuery", { callback_query_id: "cb", text: "Action annulée" }]);
+    expect(calls[2]).toEqual(["answerCallbackQuery", { callback_query_id: "cb2" }]);
+    expect(calls[3]).toEqual(["editMessageReplyMarkup", { chat_id: "9", message_id: 10 }]);
+    expect(calls[4]).toEqual(["editMessageReplyMarkup", { chat_id: "9", message_id: 10, reply_markup: markup }]);
   });
 
   const tooMany = (retryAfter: number) =>
@@ -596,5 +627,242 @@ describe("routes Telegram", () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await (await statusGET()).json()).toMatchObject({ configured: true, botUsername: null });
+  });
+});
+
+describe("annulation depuis Telegram", () => {
+  function addAction(db: TestDb, label = "Pain", summary = `Opération « ${label} » ajoutée`) {
+    const accountId = db.insert(accounts).values({ name: `Courant ${label}`, type: "checking" }).returning().get().id;
+    const tx = db.insert(transactions).values({ accountId, date: "2026-10-20", amount: -1200, label }).returning().get();
+    return recordAction(db, {
+      tool: "add_transaction",
+      summary,
+      changes: [{ table: "transactions", id: tx.id, before: null, after: tx }],
+    });
+  }
+
+  function callbackUpdate(
+    data: string,
+    opts: { chatId?: number; fromId?: number; type?: string; markup?: InlineKeyboardMarkup } = {},
+  ): TelegramUpdate {
+    const chatId = opts.chatId ?? CHAT;
+    return {
+      update_id: nextUpdateId++,
+      callback_query: {
+        id: `cb${nextUpdateId}`,
+        from: { id: opts.fromId ?? chatId },
+        data,
+        message: {
+          message_id: 77,
+          chat: { id: chatId, type: opts.type ?? "private" },
+          ...(opts.markup ? { reply_markup: opts.markup } : {}),
+        },
+      },
+    };
+  }
+
+  it("réponse avec actions → clavier « Annuler » sur le dernier morceau", async () => {
+    const long = Array.from({ length: 3 }, (_, i) => `${i} ${"m".repeat(2500)}`).join("\n\n");
+    let ids: number[] = [];
+    const { db, ctx, sent } = setup({
+      respond: (async (d: TestDb) => {
+        ids = [addAction(d, "Pain"), addAction(d, "Café", `3 opérations recatégorisées en ${"Shopping très long ".repeat(6)}`)];
+        return addMessage(d, { role: "assistant", kind: "chat", content: long, source: "telegram", meta: { replyTo: 1, actions: ids } });
+      }) as unknown as BotContext["respond"],
+    });
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "ajoute 12 € de pain"));
+    expect(sent).toHaveLength(3);
+    expect(sent[0].markup).toBeUndefined();
+    expect(sent[1].markup).toBeUndefined();
+    const rows = sent[2].markup!.inline_keyboard;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual([{ text: "Annuler : Opération « Pain » ajoutée", callback_data: `undo:${ids[0]}` }]);
+    expect(rows[1][0].callback_data).toBe(`undo:${ids[1]}`);
+    expect(rows[1][0].text.startsWith("Annuler : 3 opérations")).toBe(true);
+    expect(rows[1][0].text.endsWith("…")).toBe(true);
+    expect(rows[1][0].text.length).toBeLessThanOrEqual(64);
+    for (const [b] of rows) expect(new TextEncoder().encode(b.callback_data).length).toBeLessThanOrEqual(64);
+  });
+
+  it("réponse sans action → pas de clavier ; HTML refusé → clavier gardé en texte brut", async () => {
+    const { db, ctx, sent } = setup();
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "salut"));
+    expect(sent[0].markup).toBeUndefined();
+
+    let id = 0;
+    const plain = setup(
+      {
+        respond: (async (d: TestDb) => {
+          id = addAction(d);
+          return addMessage(d, { role: "assistant", kind: "chat", content: "Fait", source: "telegram", meta: { replyTo: 1, actions: [id] } });
+        }) as unknown as BotContext["respond"],
+      },
+      { failHtml: true },
+    );
+    linkChat(plain.db, String(CHAT));
+    await handleUpdate(plain.ctx, textUpdate(CHAT, "ajoute"));
+    expect(plain.sent).toHaveLength(1);
+    expect(plain.sent[0].plain).toBe(true);
+    expect(plain.sent[0].markup!.inline_keyboard[0][0].callback_data).toBe(`undo:${id}`);
+  });
+
+  it("réponse venue de l'app avec actions → clavier aussi sur Telegram", async () => {
+    const db = freshDb();
+    const { api, sent } = fakeApi();
+    linkChat(db, String(CHAT));
+    const ctx = createBotContext(db, api);
+    const id = addAction(db);
+    await sendToLinkedChat(
+      ctx,
+      addMessage(db, { role: "assistant", kind: "chat", content: "Fait", source: "app", meta: { replyTo: 1, actions: [id] } }),
+    );
+    expect(sent[0].markup!.inline_keyboard[0][0].callback_data).toBe(`undo:${id}`);
+  });
+
+  it("callback d'un chat non relié ou d'un autre utilisateur → répondu sans rien annuler ni révéler", async () => {
+    const { db, ctx, sent, api } = setup();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    await handleUpdate(ctx, callbackUpdate(`undo:${id}`, { chatId: 999 }));
+    await handleUpdate(ctx, callbackUpdate(`undo:${id}`, { fromId: 999 }));
+    await handleUpdate(ctx, callbackUpdate(`undo:${id}`, { type: "group" }));
+    expect(api.answerCallbackQuery).toHaveBeenCalledTimes(3);
+    for (const call of vi.mocked(api.answerCallbackQuery).mock.calls) expect(call).toHaveLength(1);
+    expect(sent).toHaveLength(0);
+    expect(api.editMessageReplyMarkup).not.toHaveBeenCalled();
+    expect(actionStatus(db, id).undoneAt).toBeNull();
+    expect(listMessages(db)).toHaveLength(0);
+
+    // Aucun chat relié : même traitement.
+    const other = setup();
+    const id2 = addAction(other.db);
+    await handleUpdate(other.ctx, callbackUpdate(`undo:${id2}`));
+    expect(vi.mocked(other.api.answerCallbackQuery).mock.calls[0]).toHaveLength(1);
+    expect(actionStatus(other.db, id2).undoneAt).toBeNull();
+  });
+
+  it("callback valide → annulation, réponse, message et bouton retiré", async () => {
+    const { db, ctx, sent, api } = setup();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    const keep = { text: "Annuler : autre", callback_data: "undo:999" };
+    const markup = { inline_keyboard: [[{ text: "Annuler : Pain", callback_data: `undo:${id}` }], [keep]] };
+    const update = callbackUpdate(`undo:${id}`, { markup });
+    await handleUpdate(ctx, update);
+    expect(actionStatus(db, id).undoneAt).not.toBeNull();
+    expect(api.answerCallbackQuery).toHaveBeenCalledWith(update.callback_query!.id, UNDO_DONE_ANSWER);
+    expect(sent.map((s) => s.text)).toEqual([`${UNDONE_PREFIX}Opération « Pain » ajoutée`]);
+    expect(api.editMessageReplyMarkup).toHaveBeenCalledWith(String(CHAT), 77, { inline_keyboard: [[keep]] });
+    // Le message système est au fil (pas renvoyé à Telegram : except).
+    const last = listMessages(db).at(-1)!;
+    expect(last).toMatchObject({ role: "assistant", source: "system", content: `${UNDONE_PREFIX}Opération « Pain » ajoutée` });
+  });
+
+  it("dernier bouton annulé → clavier retiré", async () => {
+    const { db, ctx, api } = setup();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    const markup = { inline_keyboard: [[{ text: "Annuler : Pain", callback_data: `undo:${id}` }]] };
+    await handleUpdate(ctx, callbackUpdate(`undo:${id}`, { markup }));
+    expect(api.editMessageReplyMarkup).toHaveBeenCalledWith(String(CHAT), 77, null);
+  });
+
+  it("callback pour une action déjà annulée → la raison", async () => {
+    const { db, ctx, sent, api } = setup();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    await handleUpdate(ctx, callbackUpdate(`undo:${id}`));
+    const second = callbackUpdate(`undo:${id}`);
+    await handleUpdate(ctx, second);
+    expect(api.answerCallbackQuery).toHaveBeenLastCalledWith(second.callback_query!.id, "Déjà annulée.");
+    expect(sent.at(-1)!.text).toBe("Déjà annulée.");
+    expect(listMessages(db).filter((m) => m.source === "system")).toHaveLength(1);
+  });
+
+  it("données inconnues ou mal formées → répondu sans action", async () => {
+    const { db, ctx, sent, api } = setup();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    const bad = ["autre", `undo:${id} `, "undo:0", "undo:-1", "undo:1e3", "undo:", `undo:0${id}`, "undo:99999999999999999999"];
+    for (const data of bad) await handleUpdate(ctx, callbackUpdate(data));
+    expect(api.answerCallbackQuery).toHaveBeenCalledTimes(bad.length);
+    for (const call of vi.mocked(api.answerCallbackQuery).mock.calls) expect(call).toHaveLength(1);
+    expect(sent).toHaveLength(0);
+    expect(actionStatus(db, id).undoneAt).toBeNull();
+  });
+
+  it("action introuvable → raison ; erreur de answerCallbackQuery non propagée", async () => {
+    const { db, ctx, sent, api } = setup();
+    linkChat(db, String(CHAT));
+    api.answerCallbackQuery = vi.fn(async () => {
+      throw new TelegramError("Telegram answerCallbackQuery : query is too old", 400);
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(handleUpdate(ctx, callbackUpdate("undo:12345"))).resolves.toBeUndefined();
+    expect(sent.map((s) => s.text)).toEqual(["Action introuvable."]);
+    expect(errors).toHaveBeenCalled();
+  });
+
+  it("/annuler sans action → message clair", async () => {
+    const { db, ctx, sent } = setup();
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "/annuler"));
+    expect(sent.map((s) => s.text)).toEqual([NOTHING_TO_UNDO_MESSAGE]);
+    expect(NOTHING_TO_UNDO_MESSAGE).toBe("Aucune action récente à annuler.");
+  });
+
+  it("/annuler → annule la dernière action annulable", async () => {
+    const { db, ctx, sent } = setup();
+    linkChat(db, String(CHAT));
+    const first = addAction(db, "Pain");
+    const second = addAction(db, "Café");
+    await handleUpdate(ctx, textUpdate(CHAT, "/annuler"));
+    expect(actionStatus(db, second).undoneAt).not.toBeNull();
+    expect(actionStatus(db, first).undoneAt).toBeNull();
+    expect(sent.map((s) => s.text)).toEqual([`${UNDONE_PREFIX}Opération « Café » ajoutée`]);
+    await handleUpdate(ctx, textUpdate(CHAT, "/annuler"));
+    expect(actionStatus(db, first).undoneAt).not.toBeNull();
+    await handleUpdate(ctx, textUpdate(CHAT, "/annuler"));
+    expect(sent.at(-1)!.text).toBe(NOTHING_TO_UNDO_MESSAGE);
+  });
+
+  it("l'aide mentionne les modifications, « Annuler » et /annuler", async () => {
+    const { db, ctx, sent } = setup();
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "/aide"));
+    expect(sent[0].text).toContain("modifier vos données");
+    expect(sent[0].text).toContain("« Annuler »");
+    expect(sent[0].text).toContain("/annuler");
+  });
+
+  it("boucle de polling : un callback qui échoue n'arrête pas la boucle", async () => {
+    const db = freshDb();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    const { api, sent } = fakeApi();
+    api.answerCallbackQuery = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const handled = Promise.withResolvers<void>();
+    let call = 0;
+    api.getUpdates = vi.fn(async (_o: number, _t: number, signal?: AbortSignal) => {
+      call++;
+      if (call === 1) return [callbackUpdate(`undo:${id}`), textUpdate(CHAT, "/aide")];
+      handled.resolve();
+      return new Promise<TelegramUpdate[]>((_, reject) =>
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))),
+      );
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const stop = startBot(db, { token: TOKEN, api, sleep: async () => {} });
+    try {
+      await handled.promise;
+    } finally {
+      stop();
+    }
+    expect(actionStatus(db, id).undoneAt).not.toBeNull();
+    expect(sent.at(-1)!.text).toContain("/annuler");
   });
 });

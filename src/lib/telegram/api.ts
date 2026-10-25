@@ -10,21 +10,41 @@ export type TelegramMessage = {
   [key: string]: unknown;
 };
 
-export type TelegramUpdate = {
-  update_id: number;
-  message?: TelegramMessage;
+export type TelegramUser = { id: number; username?: string };
+
+export type InlineKeyboardButton = { text: string; callback_data: string };
+export type InlineKeyboardMarkup = { inline_keyboard: InlineKeyboardButton[][] };
+
+/** Appui sur un bouton de clavier en ligne. */
+export type TelegramCallbackQuery = {
+  id: string;
+  from?: { id: number; [key: string]: unknown };
+  message?: TelegramMessage & { reply_markup?: InlineKeyboardMarkup };
+  data?: string;
   [key: string]: unknown;
 };
 
-export type TelegramUser = { id: number; username?: string };
+export type TelegramUpdate = {
+  update_id: number;
+  message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
+  [key: string]: unknown;
+};
 
 export type TelegramApi = {
   getMe(): Promise<TelegramUser>;
   /** Long polling : attend jusqu'à `timeoutSec` secondes de nouveaux messages après `offset`. */
   getUpdates(offset: number, timeoutSec: number, signal?: AbortSignal): Promise<TelegramUpdate[]>;
-  /** Envoie `text` en HTML Telegram (`plain` : texte brut, sans `parse_mode`). */
-  sendMessage(chatId: string, text: string, opts?: { plain?: boolean }): Promise<void>;
+  /**
+   * Envoie `text` en HTML Telegram (`plain` : texte brut, sans `parse_mode`) ; `replyMarkup` :
+   * clavier en ligne sous le message.
+   */
+  sendMessage(chatId: string, text: string, opts?: { plain?: boolean; replyMarkup?: InlineKeyboardMarkup }): Promise<void>;
   sendChatAction(chatId: string, action: "typing"): Promise<void>;
+  /** Répond à un appui sur un bouton (`text` : courte notification, sinon rien d'affiché). */
+  answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>;
+  /** Remplace le clavier en ligne d'un message (`null` : le retire). */
+  editMessageReplyMarkup(chatId: string, messageId: number, markup: InlineKeyboardMarkup | null): Promise<void>;
 };
 
 /** Délai des appels courts (envoi, action, getMe). */
@@ -92,7 +112,7 @@ export function telegramApi(token: string, fetchImpl: typeof fetch = fetch): Tel
     getUpdates: (offset, timeoutSec, signal) =>
       call<TelegramUpdate[]>(
         "getUpdates",
-        { offset, timeout: timeoutSec, allowed_updates: ["message"] },
+        { offset, timeout: timeoutSec, allowed_updates: ["message", "callback_query"] },
         timeoutSec * 1000 + POLL_MARGIN_MS,
         signal,
       ),
@@ -105,6 +125,7 @@ export function telegramApi(token: string, fetchImpl: typeof fetch = fetch): Tel
             text,
             ...(opts?.plain ? {} : { parse_mode: "HTML" }),
             link_preview_options: { is_disabled: true },
+            ...(opts?.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
           },
           CALL_TIMEOUT_MS,
         );
@@ -120,6 +141,21 @@ export function telegramApi(token: string, fetchImpl: typeof fetch = fetch): Tel
     },
     sendChatAction: async (chatId, action) => {
       await call("sendChatAction", { chat_id: chatId, action }, CALL_TIMEOUT_MS);
+    },
+    answerCallbackQuery: async (callbackQueryId, text) => {
+      await call(
+        "answerCallbackQuery",
+        { callback_query_id: callbackQueryId, ...(text ? { text } : {}) },
+        CALL_TIMEOUT_MS,
+      );
+    },
+    editMessageReplyMarkup: async (chatId, messageId, markup) => {
+      // Sans `reply_markup`, Telegram retire le clavier.
+      await call(
+        "editMessageReplyMarkup",
+        { chat_id: chatId, message_id: messageId, ...(markup ? { reply_markup: markup } : {}) },
+        CALL_TIMEOUT_MS,
+      );
     },
   };
 }

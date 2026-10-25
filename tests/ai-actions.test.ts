@@ -1,6 +1,13 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { actionStatus, attachActionsToMessage, recordAction, undoAction, type Change } from "@/lib/ai/actions";
+import {
+  actionStatus,
+  attachActionsToMessage,
+  lastUndoableActionId,
+  recordAction,
+  undoAction,
+  type Change,
+} from "@/lib/ai/actions";
 import { aiActions, categories, goals, transactions } from "@/lib/db/schema";
 import { createDb, type Db } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
@@ -110,7 +117,7 @@ describe("undoAction", () => {
     const tx = addTx();
     const id = recordAction(db, { tool: "a", summary: "s", changes: [{ table: "transactions", id: tx.id, before: null, after: tx }] });
     db.delete(transactions).where(eq(transactions.id, tx.id)).run();
-    expect(actionStatus(db, id).reason).toMatch(/^Modifié depuis/);
+    expect(actionStatus(db, id).reason).toBe("Modifié depuis : opération « Café ».");
   });
 
   it("refuse de recréer une ligne supprimée si l'id est réutilisé", () => {
@@ -239,5 +246,31 @@ describe("undoAction", () => {
       const row = db.insert(aiActions).values({ tool: "x", summary: "s", changes }).returning().get();
       expect(undoAction(db, row.id)).toEqual({ ok: false, reason: "Journal illisible : annulation impossible." });
     }
+  });
+});
+
+describe("lastUndoableActionId", () => {
+  const created = (label: string) => {
+    const tx = addTx(label);
+    return recordAction(db, { tool: "add", summary: label, changes: [{ table: "transactions", id: tx.id, before: null, after: tx }] });
+  };
+
+  it("aucune action → null", () => {
+    expect(lastUndoableActionId(db, Date.now())).toBeNull();
+  });
+
+  it("renvoie la plus récente encore annulable, en sautant les annulées, modifiées ou trop anciennes", () => {
+    const old = created("Ancienne");
+    const first = created("Première");
+    const undone = created("Annulée");
+    const modified = created("Modifiée");
+    const now = Date.now();
+    db.update(aiActions).set({ createdAt: now - 25 * 3600_000 }).where(eq(aiActions.id, old)).run();
+    expect(undoAction(db, undone, now).ok).toBe(true);
+    const tx = JSON.parse(db.select().from(aiActions).where(eq(aiActions.id, modified)).get()!.changes)[0].id as number;
+    db.update(transactions).set({ label: "Manuel" }).where(eq(transactions.id, tx)).run();
+    expect(lastUndoableActionId(db, now)).toBe(first);
+    expect(undoAction(db, first, now).ok).toBe(true);
+    expect(lastUndoableActionId(db, now)).toBeNull();
   });
 });
