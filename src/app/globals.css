@@ -20,7 +20,7 @@
   --muted: #565b78;
   --fg: var(--text);
   --fg-muted: var(--muted);
-  --fg-subtle: #878ca8;
+  --fg-subtle: #676b8a;
   /* Signature : dégradé indigo → violet (texte blanc ≥ 5,3:1 sur les deux extrémités). */
   --brand-from: #4f46e5;
   --brand-to: #9333ea;
@@ -30,9 +30,9 @@
   --accent-fg: #ffffff;
   --accent-soft: var(--brand-soft);
   /* États. */
-  --positive: #0f7f4a;
+  --positive: #0b7342;
   --positive-soft: #e3f6ea;
-  --negative: #c93636;
+  --negative: #b83030;
   --negative-soft: #fdeaea;
   --warning: #a35f00;
   --warning-fill: #f0a020;
@@ -60,7 +60,7 @@
     --border-strong: #353961;
     --text: #eef0fb;
     --muted: #a9adcb;
-    --fg-subtle: #7479a1;
+    --fg-subtle: #8a8fb5;
     --brand: #a5b4fc;
     --brand-soft: #262a5c;
     --accent-fg: #0f1023;

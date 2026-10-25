@@ -40,7 +40,8 @@ export function chipClasses({
     "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
     selected && !tinted && "border border-transparent bg-brand-gradient text-white shadow-glow hover:brightness-110",
     selected && tinted && "tint border border-transparent ring-2 ring-current ring-inset",
-    !selected && tinted && "tint border border-transparent hover:brightness-95 dark:hover:brightness-110",
+    // Survol : seul l'anneau change (aucun filtre, le texte garde son contraste AA).
+    !selected && tinted && "tint border border-transparent hover:ring-2 hover:ring-inset hover:ring-(--tint-ring)",
     !selected && !tinted && "border border-border bg-surface text-muted hover:border-border-strong hover:text-fg",
     className,
   );
