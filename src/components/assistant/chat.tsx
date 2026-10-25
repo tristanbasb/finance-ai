@@ -1,513 +1,331 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type FormEvent,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUp, Bot, CircleAlert, LoaderCircle, RotateCcw, SquarePen, Square, Sparkles } from "lucide-react";
+import { Maximize2, SquarePen, X } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Markdown } from "@/components/assistant/markdown";
-import { ASSISTANT_STORAGE_KEY } from "@/lib/assistant-storage";
+import { toast } from "@/components/ui/toast";
+import { excerpt, kindLabel, unreadAssistantIds, type ThreadMessage } from "@/lib/assistant-thread";
 import { errorMessage } from "@/lib/http";
 import { decodeSse } from "@/lib/sse";
 import { cn } from "@/lib/cn";
+import { useAssistant } from "./assistant-provider";
+import { Composer } from "./composer";
+import { ModelSelect } from "./model-select";
+import { ThreadView, useThread, type PendingUser, type ThreadFailure } from "./thread";
+import { UNREAD_POLL_MS } from "./use-unread";
 
-type Message = { id: string; role: "user" | "assistant"; content: string; stopped?: boolean };
+export { SUGGESTIONS, TOOL_LABELS, toolLabel } from "./thread";
 
-const STORAGE_KEY = ASSISTANT_STORAGE_KEY;
-const MAX_HISTORY = 50;
-const MAX_CONTENT = 8000;
+/** Délai de regroupement des marquages « lu ». */
+const READ_BATCH_MS = 400;
 
-export const SUGGESTIONS = [
-  "Où part mon argent ce mois-ci ?",
-  "Comment améliorer mon taux d'épargne ?",
-  "Résume mes investissements",
-  "Suis-je dans les clous de mes budgets ?",
-] as const;
+type Failure = { message: string; content: string; saved: boolean };
 
-const TOOL_LABELS: Record<string, string> = {
-  get_overview: "Consultation de votre situation…",
-  search_transactions: "Consultation de vos transactions…",
-  spending_by_category: "Analyse de vos dépenses par catégorie…",
-  get_holdings: "Consultation de vos investissements…",
-  get_goals: "Consultation de vos objectifs d'épargne…",
-};
+/**
+ * Conversation avec Claude (fil persistant + saisie), partagée par le panneau latéral et la page
+ * Assistant. La réponse est générée et enregistrée côté serveur ; le flux SSE ne sert qu'à
+ * l'affichage en direct, et le fil est toujours rechargé à la fin.
+ */
+export function AssistantConversation({
+  variant,
+  onClose,
+  titleId,
+}: {
+  variant: "panel" | "page";
+  onClose?: () => void;
+  titleId?: string;
+}) {
+  const { aiEnabled, focusId, clearFocus, refreshUnread, unread, setOpen } = useAssistant();
+  const thread = useThread();
+  const { refreshTail, upsert, messages } = thread;
 
-function toolLabel(name: string): string {
-  return TOOL_LABELS[name] ?? "Consultation de vos données…";
-}
-
-let idCounter = 0;
-function newId(): string {
-  idCounter += 1;
-  return `${Date.now().toString(36)}-${idCounter}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function isMessage(value: unknown): value is Message {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.id === "string" && (v.role === "user" || v.role === "assistant") && typeof v.content === "string";
-}
-
-function loadConversation(): Message[] {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isMessage).filter((m) => m.content !== "") : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveConversation(messages: Message[]): void {
-  try {
-    if (messages.length === 0) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-  } catch {
-    /* stockage indisponible (navigation privée, quota) : la conversation reste en mémoire */
-  }
-}
-
-/** Historique envoyé à l'API : 50 derniers messages non vides, commençant par une question. */
-function toPayload(history: Message[]) {
-  const recent = history
-    .filter((m) => m.content.trim() !== "")
-    .slice(-MAX_HISTORY)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_CONTENT) }));
-  while (recent.length > 0 && recent[0].role !== "user") recent.shift();
-  return recent;
-}
-
-const noSubscribe = () => () => {};
-
-/** Faux au rendu serveur et à l'hydratation, vrai ensuite (localStorage accessible). */
-function useHydrated(): boolean {
-  return useSyncExternalStore(
-    noSubscribe,
-    () => true,
-    () => false,
-  );
-}
-
-export function AssistantChat({ enabled }: { enabled: boolean }) {
-  const hydrated = useHydrated();
-  if (!enabled) return <DisabledState />;
-  // La conversation est restaurée depuis localStorage : rendue uniquement côté navigateur.
-  return hydrated ? <Conversation /> : <ConversationSkeleton />;
-}
-
-function ConversationSkeleton() {
-  return (
-    <div className="space-y-5 sm:space-y-6" aria-busy="true">
-      <PageHeader />
-      <Card className="h-[calc(100dvh-17rem)] min-h-[26rem] md:h-[calc(100dvh-12.5rem)]" />
-    </div>
-  );
-}
-
-function PageHeader({ action }: { action?: ReactNode }) {
-  return (
-    <header className="flex flex-wrap items-end justify-between gap-4">
-      <div className="space-y-1">
-        <p className="text-[13px] text-muted">Propulsé par Claude</p>
-        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Assistant</h1>
-      </div>
-      {action}
-    </header>
-  );
-}
-
-const codeClasses = "rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg";
-
-function DisabledState() {
-  return (
-    <div className="space-y-5 sm:space-y-6">
-      <PageHeader />
-      <Card className="flex flex-col items-center gap-4 px-6 py-14 text-center">
-        <span className="inline-flex size-12 items-center justify-center rounded-full bg-surface-2 text-subtle">
-          <Bot aria-hidden className="size-6" />
-        </span>
-        <div className="max-w-md space-y-1.5">
-          <h2 className="text-[15px] font-semibold text-fg">Assistant IA désactivé</h2>
-          <p className="text-[13px] leading-relaxed text-muted">
-            Ajoutez la variable <code className={codeClasses}>ANTHROPIC_API_KEY</code> au fichier{" "}
-            <code className={codeClasses}>.env</code>, puis redémarrez l&apos;application.
-          </p>
-        </div>
-        <Link href="/settings#ia" className={buttonClasses({ variant: "secondary" })}>
-          Voir les réglages
-        </Link>
-      </Card>
-    </div>
-  );
-}
-
-function Conversation() {
-  const [messages, setMessages] = useState<Message[]>(loadConversation);
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [activeTool, setActiveTool] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingUser | null>(null);
+  const [stream, setStream] = useState<{ text: string; tool: string | null } | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [scrollSignal, setScrollSignal] = useState(0);
+  const [creatingDivider, setCreatingDivider] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
+  const streamingRef = useRef(false);
+  const streaming = stream !== null;
 
+  // Annonce (lecteurs d'écran) des nouveaux messages de Claude, une fois complets.
+  const reloadTail = useCallback(async () => {
+    const fresh = await refreshTail();
+    const last = [...fresh].reverse().find((m) => m.role === "assistant");
+    if (last) setAnnouncement(`${kindLabel(last.kind)} : ${excerpt(last.content, 200)}`);
+    return fresh;
+  }, [refreshTail]);
+
+  // Le fil ouvert se recharge régulièrement (messages Telegram, alertes) et au retour sur l'onglet.
   useEffect(() => {
-    if (!streaming) saveConversation(messages);
-  }, [messages, streaming]);
+    const tick = () => {
+      if (document.visibilityState === "visible" && !streamingRef.current) void reloadTail();
+    };
+    const timer = setInterval(tick, UNREAD_POLL_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [reloadTail]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
-
-  // Défilement automatique tant que l'utilisateur est en bas de la conversation.
+  // Un non-lu plus récent que le fil affiché (détecté par la cloche) : rechargement immédiat.
+  const lastId = messages[messages.length - 1]?.id ?? 0;
+  const newestUnread = unread.latest[0]?.id ?? 0;
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [messages, activeTool, error, streaming]);
+    if (thread.status === "ready" && newestUnread > lastId && !streamingRef.current) void reloadTail();
+  }, [newestUnread, lastId, thread.status, reloadTail]);
 
-  // Zone de saisie qui grandit avec le texte (6 lignes environ au maximum).
+  // Marquage « lu » groupé des messages affichés.
+  const toMark = useRef(new Set<number>());
+  const markTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesRef = useRef<ThreadMessage[]>(messages);
   useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [input]);
+    messagesRef.current = messages;
+  }, [messages]);
 
-  const run = useCallback(async (history: Message[]) => {
-    const assistantId = newId();
-    stickToBottom.current = true;
-    setMessages([...history, { id: assistantId, role: "assistant", content: "" }]);
-    setError(null);
-    setActiveTool(null);
-    setStreaming(true);
-    setAnnouncement("Réponse en cours…");
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const append = (text: string) =>
-      setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + text } : m)));
-
-    let failure: string | null = null;
-    let stopped = false;
+  const flushRead = useCallback(async () => {
+    markTimer.current = null;
+    const ids = [...toMark.current];
+    toMark.current.clear();
+    if (!ids.length) return;
     try {
-      const res = await fetch("/api/ai/chat", {
+      const res = await fetch("/api/messages/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: toPayload(history) }),
-        signal: controller.signal,
+        body: JSON.stringify({ ids }),
       });
-      if (!res.ok || !res.body) {
-        failure = await errorMessage(res);
-      } else {
-        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-        let buffer = "";
-        let finished = false;
-        while (!finished) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          const { events, rest } = decodeSse(buffer + value);
-          buffer = rest;
-          for (const event of events) {
-            if (event.type === "text") {
-              setActiveTool(null);
-              append(event.text);
-            } else if (event.type === "tool") {
-              setActiveTool(event.name);
-              setAnnouncement(toolLabel(event.name));
-            } else if (event.type === "error") {
-              failure = event.error;
-            } else {
-              finished = true;
+      if (!res.ok) return;
+      const at = Date.now();
+      const wanted = new Set(ids);
+      upsert(messagesRef.current.filter((m) => wanted.has(m.id)).map((m) => ({ ...m, readAt: m.readAt ?? at })));
+      void refreshUnread();
+    } catch {
+      /* nouvel essai au prochain affichage */
+    }
+  }, [upsert, refreshUnread]);
+
+  const onSeen = useCallback(
+    (ids: number[]) => {
+      const unreadIds = new Set(unreadAssistantIds(messagesRef.current));
+      for (const id of ids) if (unreadIds.has(id)) toMark.current.add(id);
+      if (toMark.current.size && !markTimer.current) markTimer.current = setTimeout(() => void flushRead(), READ_BATCH_MS);
+    },
+    [flushRead],
+  );
+
+  useEffect(
+    () => () => {
+      if (markTimer.current) clearTimeout(markTimer.current);
+    },
+    [],
+  );
+
+  const send = useCallback(
+    async (content: string) => {
+      if (streamingRef.current) return;
+      streamingRef.current = true;
+      setFailure(null);
+      setPending({ content, failed: false });
+      setStream({ text: "", tool: null });
+      setScrollSignal((n) => n + 1);
+      setAnnouncement("Claude prépare sa réponse…");
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      let error: string | null = null;
+      let saved = false; // message utilisateur enregistré côté serveur
+      let stopped = false;
+      try {
+        const res = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          error = await errorMessage(res);
+        } else {
+          saved = true;
+          const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+          let buffer = "";
+          let finished = false;
+          while (!finished) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const { events, rest } = decodeSse(buffer + value);
+            buffer = rest;
+            for (const event of events) {
+              if (event.type === "text") setStream((s) => ({ text: (s?.text ?? "") + event.text, tool: null }));
+              else if (event.type === "tool") setStream((s) => ({ text: s?.text ?? "", tool: event.name }));
+              else if (event.type === "error") error = event.error;
+              else if (event.type === "done") finished = true;
             }
           }
+          if (!finished && !error) error = "La réponse a été interrompue. Réessayez.";
         }
-        if (!finished && !failure) failure = "La réponse a été interrompue. Réessayez.";
+      } catch {
+        if (controller.signal.aborted) stopped = true;
+        else error = "Connexion à l'assistant impossible. Réessayez.";
+        // Requête partie : le message a pu être enregistré ; le fil rechargé le dira.
+        saved = true;
       }
-    } catch {
-      if (controller.signal.aborted) stopped = true;
-      else failure = "Connexion à l'assistant impossible. Réessayez.";
-    } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setMessages((prev) =>
-        prev.flatMap((m) => {
-          if (m.id !== assistantId) return [m];
-          if (m.content.trim() === "") return [];
-          return [stopped || failure ? { ...m, stopped: true } : m];
-        }),
-      );
-      setStreaming(false);
-      setActiveTool(null);
-      setError(failure);
-      setAnnouncement(failure ? "" : stopped ? "Réponse interrompue." : "Réponse de l'assistant reçue.");
-    }
-  }, []);
 
-  function send(text: string) {
-    const content = text.trim();
-    if (!content || streaming) return;
-    setInput("");
-    void run([...messages, { id: newId(), role: "user", content: content.slice(0, MAX_CONTENT) }]);
-    textareaRef.current?.focus();
-  }
-
-  function retry() {
-    if (streaming || messages[messages.length - 1]?.role !== "user") return;
-    void run(messages);
-  }
+      // Le fil fait foi : réponse enregistrée, réponse d'une génération concurrente, texte interrompu.
+      await reloadTail();
+      const kept = !saved;
+      setStream(null);
+      setPending(kept ? { content, failed: true } : null);
+      setFailure(error ? { message: error, content, saved } : null);
+      if (stopped) {
+        setAnnouncement("Réponse interrompue.");
+        // Le texte partiel est enregistré juste après l'interruption.
+        setTimeout(() => void reloadTail(), 1500);
+      } else if (error) {
+        setAnnouncement("");
+      }
+      streamingRef.current = false;
+    },
+    [reloadTail],
+  );
 
   function stop() {
     abortRef.current?.abort();
-    textareaRef.current?.focus();
   }
 
-  function reset() {
-    abortRef.current?.abort();
-    setMessages([]);
-    setError(null);
-    setInput("");
-    setAnnouncement("Nouvelle conversation.");
-    textareaRef.current?.focus();
-  }
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    send(input);
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      send(input);
+  async function newConversation() {
+    setCreatingDivider(true);
+    try {
+      const res = await fetch("/api/messages/divider", { method: "POST" });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      const body = (await res.json()) as { message: ThreadMessage };
+      upsert([body.message]);
+      setFailure(null);
+      setPending(null);
+      setScrollSignal((n) => n + 1);
+      setAnnouncement("Nouvelle conversation : Claude repart de zéro.");
+    } catch (err) {
+      toast.error("Nouvelle conversation impossible", {
+        description: err instanceof Error && err.message ? err.message : "Le serveur ne répond pas. Réessayez.",
+      });
+    } finally {
+      setCreatingDivider(false);
     }
   }
 
-  const empty = messages.length === 0;
-  const lastIsUser = messages[messages.length - 1]?.role === "user";
+  const threadFailure: ThreadFailure | null = failure
+    ? { message: failure.message, onRetry: aiEnabled && !streaming ? () => void send(failure.content) : undefined }
+    : null;
 
-  return (
-    <div className="space-y-5 sm:space-y-6">
-      <PageHeader
-        action={
-          messages.length > 0 && (
-            <Button variant="secondary" onClick={reset}>
-              <SquarePen aria-hidden />
-              Nouvelle conversation
-            </Button>
-          )
-        }
+  const lastIsDivider = messages[messages.length - 1]?.role === "divider";
+  const newConversationButton = (
+    <Button
+      variant={variant === "panel" ? "ghost" : "secondary"}
+      size={variant === "panel" ? "icon" : "sm"}
+      onClick={() => void newConversation()}
+      loading={creatingDivider}
+      disabled={streaming || lastIsDivider || messages.length === 0}
+      title="Claude repart de zéro (le fil reste affiché)"
+    >
+      {!creatingDivider && <SquarePen aria-hidden />}
+      <span className={variant === "panel" ? "sr-only" : undefined}>Nouvelle conversation</span>
+    </Button>
+  );
+
+  const body = (
+    <>
+      <ThreadView
+        thread={thread}
+        pending={pending}
+        stream={stream}
+        failure={threadFailure}
+        focusId={focusId}
+        onFocusDone={clearFocus}
+        onSeen={onSeen}
+        onSuggestion={aiEnabled ? (q) => void send(q) : undefined}
+        scrollSignal={scrollSignal}
+        className={cn("flex-1", variant === "panel" ? "px-4 py-5" : "px-4 py-5 sm:px-6")}
+        innerClassName={variant === "page" ? "max-w-3xl" : undefined}
       />
-
-      <Card className="flex h-[calc(100dvh-17rem)] min-h-[26rem] flex-col overflow-hidden md:h-[calc(100dvh-12.5rem)]">
-        <div
-          ref={scrollRef}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-          }}
-          className="flex-1 overflow-y-auto px-4 py-5 sm:px-6"
-        >
-          {empty ? (
-            <Welcome onPick={send} />
-          ) : (
-            <ol aria-label="Conversation" className="mx-auto max-w-3xl space-y-5">
-              {messages.map((m, i) => {
-                const isLast = i === messages.length - 1;
-                return m.role === "user" ? (
-                  <UserBubble key={m.id} text={m.content} />
-                ) : (
-                  <AssistantBubble
-                    key={m.id}
-                    text={m.content}
-                    stopped={m.stopped === true}
-                    pending={streaming && isLast}
-                    tool={streaming && isLast ? activeTool : null}
-                  />
-                );
-              })}
-              {error && (
-                <li
-                  role="alert"
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger"
-                >
-                  <CircleAlert aria-hidden className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1">{error}</span>
-                  {lastIsUser && (
-                    <Button variant="secondary" size="sm" onClick={retry}>
-                      <RotateCcw aria-hidden />
-                      Réessayer
-                    </Button>
-                  )}
-                </li>
-              )}
-              {!error && !streaming && lastIsUser && (
-                <li className="flex flex-wrap items-center gap-x-3 gap-y-2 pl-10 text-[13px] text-muted">
-                  <span>Ce message n&apos;a pas reçu de réponse.</span>
-                  <Button variant="secondary" size="sm" onClick={retry}>
-                    <RotateCcw aria-hidden />
-                    Réessayer
-                  </Button>
-                </li>
-              )}
-            </ol>
-          )}
-        </div>
-
-        <div className="border-t border-border bg-surface px-4 pb-3 pt-3 sm:px-6">
-          <form onSubmit={onSubmit} className="mx-auto max-w-3xl">
-            <div
-              className={cn(
-                "flex items-end gap-2 rounded-xl border border-border bg-surface p-1.5 pl-3",
-                "transition-[border-color,box-shadow] duration-150 hover:border-border-strong",
-                "focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20",
-              )}
-            >
-              <label htmlFor="assistant-input" className="sr-only">
-                Votre question
-              </label>
-              <textarea
-                id="assistant-input"
-                ref={textareaRef}
-                rows={1}
-                value={input}
-                maxLength={MAX_CONTENT}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="Posez une question sur vos finances…"
-                aria-describedby="assistant-hint"
-                className="max-h-40 min-h-9 flex-1 resize-none bg-transparent py-2 text-sm leading-5 text-fg placeholder:text-subtle focus:outline-none"
-              />
-              {streaming ? (
-                <Button variant="secondary" size="icon" onClick={stop} aria-label="Arrêter la réponse" title="Arrêter">
-                  <Square aria-hidden className="fill-current" />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={input.trim() === ""}
-                  aria-label="Envoyer la question"
-                  title="Envoyer"
-                >
-                  <ArrowUp aria-hidden />
-                </Button>
-              )}
-            </div>
-            <p id="assistant-hint" className="mt-2 text-center text-[12px] text-subtle">
-              Informations générales, pas un conseil financier personnalisé.
-              <span className="hidden sm:inline"> Entrée pour envoyer, Maj + Entrée pour un retour à la ligne.</span>
-            </p>
-          </form>
-        </div>
-      </Card>
-
+      <div
+        className={cn(
+          "border-t border-border bg-surface px-4 pt-3",
+          variant === "panel" ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : "pb-3 sm:px-6",
+        )}
+      >
+        <Composer
+          onSend={(text) => void send(text)}
+          onStop={stop}
+          streaming={streaming}
+          disabled={!aiEnabled}
+          autoFocus={variant === "panel"}
+          className={variant === "page" ? "mx-auto max-w-3xl" : undefined}
+        />
+      </div>
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-    </div>
+    </>
   );
-}
 
-function Welcome({ onPick }: { onPick: (q: string) => void }) {
-  return (
-    <div className="mx-auto flex h-full max-w-xl flex-col items-center justify-center gap-6 py-6 text-center">
-      <span className="inline-flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
-        <Sparkles aria-hidden className="size-6" />
-      </span>
-      <div className="space-y-1.5">
-        <h2 className="text-[15px] font-semibold text-fg">Posez une question sur vos finances</h2>
-        <p className="text-[13px] leading-relaxed text-muted">
-          L&apos;assistant consulte vos comptes, transactions, budgets, investissements et objectifs, en lecture seule.
-        </p>
-      </div>
-      <ul aria-label="Questions suggérées" className="grid w-full gap-2 sm:grid-cols-2">
-        {SUGGESTIONS.map((q) => (
-          <li key={q}>
-            <button
-              type="button"
-              onClick={() => onPick(q)}
-              className={cn(
-                "h-full w-full rounded-xl border border-border bg-surface px-4 py-3 text-left text-[13px] text-fg",
-                "transition-[background-color,border-color] duration-150 hover:border-border-strong hover:bg-surface-2",
-                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-              )}
+  if (variant === "panel") {
+    return (
+      <div className="flex h-full flex-col">
+        <PanelHeader titleId={titleId}>
+          <ModelSelect />
+          {newConversationButton}
+          {/* Plein écran : inutile sur mobile, où le panneau occupe déjà tout l'écran. */}
+          <span className="hidden md:contents">
+            <Link
+              href="/assistant"
+              onClick={() => setOpen(false)}
+              aria-label="Ouvrir l'assistant en plein écran"
+              title="Plein écran"
+              className={buttonClasses({ variant: "ghost", size: "icon" })}
             >
-              {q}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <Maximize2 aria-hidden />
+            </Link>
+          </span>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fermer l'assistant" title="Fermer (Échap)">
+            <X aria-hidden />
+          </Button>
+        </PanelHeader>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 sm:space-y-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-[13px] text-muted">Réponses, alertes et bilans de Claude</p>
+          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Assistant</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <ModelSelect />
+          {newConversationButton}
+        </div>
+      </header>
+      <Card className="flex h-[calc(100dvh-17rem)] min-h-[26rem] flex-col overflow-hidden md:h-[calc(100dvh-12.5rem)]">
+        {body}
+      </Card>
     </div>
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+function PanelHeader({ titleId, children }: { titleId?: string; children: ReactNode }) {
   return (
-    <li className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm leading-relaxed text-accent-fg">
-        <span className="sr-only">Vous : </span>
-        {text}
-      </div>
-    </li>
-  );
-}
-
-function AssistantBubble({
-  text,
-  stopped,
-  pending,
-  tool,
-}: {
-  text: string;
-  stopped: boolean;
-  pending: boolean;
-  tool: string | null;
-}) {
-  return (
-    <li className="flex items-start gap-3">
-      <span
-        aria-hidden
-        className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"
-      >
-        <Sparkles className="size-3.5" />
-      </span>
-      <div className="min-w-0 max-w-[85%] space-y-2">
-        {(text !== "" || (!tool && pending)) && (
-          <div className="break-words rounded-2xl rounded-tl-md bg-surface-2 px-4 py-3 text-sm leading-relaxed text-fg">
-            <span className="sr-only">Assistant : </span>
-            {text !== "" ? (
-              <Markdown text={text} />
-            ) : (
-              <span className="flex h-5 items-center gap-1" aria-label="L'assistant réfléchit">
-                {[0, 150, 300].map((delay) => (
-                  <span
-                    key={delay}
-                    className="size-1.5 animate-pulse rounded-full bg-subtle"
-                    style={{ animationDelay: `${delay}ms` }}
-                  />
-                ))}
-              </span>
-            )}
-          </div>
-        )}
-        {tool && (
-          <p className="flex items-center gap-2 text-[13px] text-muted">
-            <LoaderCircle aria-hidden className="size-3.5 animate-spin text-accent" />
-            {toolLabel(tool)}
-          </p>
-        )}
-        {stopped && <p className="text-[12px] text-subtle">Réponse interrompue</p>}
-      </div>
-    </li>
+    <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 pt-[env(safe-area-inset-top)] box-content">
+      <h2 id={titleId} className="mr-auto text-[15px] font-semibold tracking-[-0.01em] text-fg">
+        Assistant
+      </h2>
+      {children}
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { todayLocal } from "@/lib/dates";
 import { monthRange } from "@/lib/finance";
 import { formatEUR } from "@/lib/money";
 import { formatDateLong, formatMonth, formatPercent } from "@/lib/format";
+import { latestProactive } from "@/lib/queries/messages";
 import { getOverview } from "@/lib/queries/overview";
 import { listSnapshots, recordSnapshot } from "@/lib/queries/snapshots";
 import { spendingByCategory } from "@/lib/queries/transactions";
@@ -12,6 +13,7 @@ import { Amount } from "@/components/amount";
 import { AiInsightsCard } from "@/components/ai-insights-card";
 import { BudgetsCard } from "@/components/dashboard/budgets-card";
 import { KpiTile } from "@/components/dashboard/kpi-tile";
+import { LatestMessageCard } from "@/components/dashboard/latest-message-card";
 import { NetWorthCard } from "@/components/dashboard/net-worth-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { SpendingCard } from "@/components/dashboard/spending-card";
@@ -36,6 +38,7 @@ export default function DashboardPage() {
     color: s.color,
     value: s.total,
   }));
+  const latestMessage = latestProactive(db);
   const points = listSnapshots(db, 90).map((s) => ({ date: s.date, netWorth: s.netWorth }));
 
   const { income, expenses } = overview.month;
@@ -49,6 +52,8 @@ export default function DashboardPage() {
           Tableau de bord
         </h1>
       </header>
+
+      <LatestMessageCard message={latestMessage} />
 
       {overview.recent.length === 0 && <WelcomeCard />}
 

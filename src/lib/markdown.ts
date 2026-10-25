@@ -17,9 +17,10 @@ export type Block =
   | { type: "list"; ordered: boolean; start: number; items: Line[][] }
   | { type: "code"; text: string };
 
-// Code en ligne, puis gras (contenu non vide, sans espace aux bords), puis italique avec `*`.
+// Code en ligne, puis gras (contenu non vide, sans espace aux bords), puis italique avec `*`,
+// puis italique avec `_` hors d'un mot (`compte_joint` reste du texte).
 const INLINE =
-  /`([^`\n]+)`|\*\*(?=\S)([^\n]*?\S)\*\*(?!\*)|\*(?=[^\s*])([^*\n]*?[^\s*])\*(?!\*)/g;
+  /`([^`\n]+)`|\*\*(?=\S)([^\n]*?\S)\*\*(?!\*)|\*(?=[^\s*])([^*\n]*?[^\s*])\*(?!\*)|(?<![\p{L}\p{N}_])_(?=[^\s_])([^_\n]*?[^\s_])_(?![\p{L}\p{N}_])/gu;
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -34,7 +35,7 @@ export function parseInline(text: string): Inline[] {
     if (index > last) push({ type: "text", text: text.slice(last, index) });
     if (m[1] !== undefined) push({ type: "code", text: m[1] });
     else if (m[2] !== undefined) push({ type: "bold", children: parseInline(m[2]) });
-    else push({ type: "italic", text: m[3] });
+    else push({ type: "italic", text: m[3] ?? m[4] });
     last = index + m[0].length;
   }
   if (last < text.length) push({ type: "text", text: text.slice(last) });

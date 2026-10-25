@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { NotificationBell } from "./assistant/notification-bell";
 import { Brand } from "./brand-mark";
 import { LogoutButton } from "./logout-button";
 import { isActive, NAV_ITEMS } from "./nav-items";
@@ -12,9 +13,12 @@ export function Sidebar() {
   const pathname = usePathname();
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-bg px-3 py-5 md:flex">
-      <Link href="/" className="mb-8 rounded-lg px-2 py-1">
-        <Brand />
-      </Link>
+      <div className="mb-8 flex items-center justify-between gap-2">
+        <Link href="/" className="rounded-lg px-2 py-1">
+          <Brand />
+        </Link>
+        <NotificationBell />
+      </div>
       <nav aria-label="Navigation principale" className="flex-1">
         <ul className="space-y-0.5">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {

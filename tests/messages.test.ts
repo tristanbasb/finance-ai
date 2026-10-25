@@ -4,6 +4,7 @@ import { runMigrations } from "@/lib/db/migrate";
 import {
   addMessage,
   contextMessages,
+  latestProactive,
   listMessages,
   markRead,
   pendingUserMessages,
@@ -203,5 +204,19 @@ describe("messages en attente", () => {
     user(db, "Q3", 6);
     divider(db, 7);
     expect(pendingUserMessages(db)).toEqual([]);
+  });
+});
+
+describe("latestProactive", () => {
+  it("renvoie la dernière alerte ou le dernier bilan, jamais une réponse ordinaire", () => {
+    const db = freshDb();
+    expect(latestProactive(db)).toBeNull();
+    asst(db, "Réponse", 1000);
+    expect(latestProactive(db)).toBeNull();
+    asst(db, "Alerte budget", 2000, "alert");
+    addMessage(db, { role: "assistant", kind: "weekly", content: "Bilan", source: "system", now: 3000 });
+    user(db, "Merci", 4000);
+    asst(db, "De rien", 5000);
+    expect(latestProactive(db)?.content).toBe("Bilan");
   });
 });

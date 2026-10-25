@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { NotificationBell } from "./assistant/notification-bell";
 import { Brand } from "./brand-mark";
 import { LogoutButton } from "./logout-button";
 import { isActive, NAV_ITEMS } from "./nav-items";
 
-/** En-tête mobile (< md) : logo, Réglages et Déconnexion. */
+/** En-tête mobile (< md) : logo, notifications, Réglages et Déconnexion. */
 export function MobileHeader() {
   const pathname = usePathname();
   return (
@@ -15,26 +16,29 @@ export function MobileHeader() {
       <Link href="/" aria-label="Tableau de bord">
         <Brand />
       </Link>
-      <nav aria-label="Compte" className="flex items-center gap-1">
-        {NAV_ITEMS.filter((i) => !i.primary).map(({ href, label, icon: Icon }) => {
-          const active = isActive(pathname, href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "inline-flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-2",
-                active ? "text-accent" : "text-muted",
-              )}
-            >
-              <Icon aria-hidden className="size-[18px]" />
-            </Link>
-          );
-        })}
-        <LogoutButton compact />
-      </nav>
+      <div className="flex items-center gap-1">
+        <NotificationBell align="right" />
+        <nav aria-label="Compte" className="flex items-center gap-1">
+          {NAV_ITEMS.filter((i) => !i.primary).map(({ href, label, icon: Icon }) => {
+            const active = isActive(pathname, href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "inline-flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-2",
+                  active ? "text-accent" : "text-muted",
+                )}
+              >
+                <Icon aria-hidden className="size-[18px]" />
+              </Link>
+            );
+          })}
+          <LogoutButton compact />
+        </nav>
+      </div>
     </header>
   );
 }

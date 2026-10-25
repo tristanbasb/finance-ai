@@ -106,4 +106,12 @@ describe("parseMarkdown", () => {
     expect(parseMarkdown("")).toEqual([]);
     expect(parseMarkdown("a\r\n\r\nb")).toHaveLength(2);
   });
+
+  it("italique avec des traits de soulignement, hors des mots", () => {
+    expect(parseInline("texte _(interrompu)_")).toEqual([
+      { type: "text", text: "texte " },
+      { type: "italic", text: "(interrompu)" },
+    ]);
+    expect(parseInline("compte_joint_perso")).toEqual([{ type: "text", text: "compte_joint_perso" }]);
+  });
 });

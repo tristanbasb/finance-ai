@@ -9,11 +9,15 @@ export type ToastVariant = "default" | "success" | "warning" | "error";
 export type ToastOptions = {
   variant?: ToastVariant;
   description?: string;
-  /** Durée d'affichage en ms (défaut 4 s, 6 s pour un avertissement ou une erreur). */
+  /** Durée d'affichage en ms (défaut 4 s, 6 s pour un avertissement ou une erreur, 12 s avec une action). */
   duration?: number;
+  /** Bouton d'action (ferme la notification après l'appel). */
+  action?: ToastAction;
 };
 
-type ToastItem = { id: number; message: string; description?: string; variant: ToastVariant };
+export type ToastAction = { label: string; onClick: () => void };
+
+type ToastItem = { id: number; message: string; description?: string; variant: ToastVariant; action?: ToastAction };
 
 const MAX_VISIBLE = 4;
 const EMPTY: ToastItem[] = [];
@@ -43,9 +47,12 @@ export function dismissToast(id: number): void {
 export function toast(message: string, options: ToastOptions = {}): number {
   const id = nextId++;
   const variant = options.variant ?? "default";
-  items = [...items, { id, message, description: options.description, variant }].slice(-MAX_VISIBLE);
+  items = [...items, { id, message, description: options.description, variant, action: options.action }].slice(
+    -MAX_VISIBLE,
+  );
   emit();
-  const duration = options.duration ?? (variant === "error" || variant === "warning" ? 6000 : 4000);
+  const duration =
+    options.duration ?? (options.action ? 12000 : variant === "error" || variant === "warning" ? 6000 : 4000);
   setTimeout(() => dismissToast(id), duration);
   return id;
 }
@@ -64,13 +71,16 @@ const icons = {
   error: <CircleAlert aria-hidden className="size-4 text-danger" />,
 } as const;
 
-/** Zone d'affichage des notifications ; à placer une fois dans la mise en page. */
+/**
+ * Zone d'affichage des notifications ; à placer une fois dans la mise en page. Placée au-dessus
+ * de la bulle de l'assistant (et de la barre d'onglets sur mobile).
+ */
 export function Toaster() {
   const list = useSyncExternalStore(subscribe, () => items, () => EMPTY);
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-4 bottom-24 z-50 flex flex-col items-center gap-2 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:items-end"
+      className="pointer-events-none fixed inset-x-4 bottom-[calc(9.5rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 sm:inset-x-auto sm:right-6 sm:items-end md:bottom-24"
     >
       {list.map((t) => (
         <div
@@ -85,6 +95,18 @@ export function Toaster() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-fg">{t.message}</p>
             {t.description && <p className="mt-0.5 text-[13px] text-muted">{t.description}</p>}
+            {t.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  dismissToast(t.id);
+                  t.action?.onClick();
+                }}
+                className="mt-2 inline-flex h-7 items-center rounded-md bg-accent-soft px-2.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
           <button
             type="button"

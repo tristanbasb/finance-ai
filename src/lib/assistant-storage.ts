@@ -1,9 +1,11 @@
-// Conversation de l'assistant conservée dans le navigateur (localStorage).
+// Ancienne conversation de l'assistant conservée dans le navigateur (localStorage), remplacée
+// par le fil enregistré sur le serveur. La clé est supprimée au chargement de l'application
+// (AssistantProvider) et à la déconnexion, pour ne laisser aucune donnée financière en local.
 
-/** Clé localStorage de la conversation de l'assistant. */
+/** Clé localStorage de l'ancienne conversation de l'assistant (plus écrite). */
 export const ASSISTANT_STORAGE_KEY = "finance-ai.assistant.conversation.v1";
 
-/** Efface la conversation enregistrée (à la déconnexion) ; sans effet si le stockage est indisponible. */
+/** Efface l'ancienne conversation locale ; sans effet si le stockage est indisponible. */
 export function clearAssistantConversation(): void {
   try {
     window.localStorage.removeItem(ASSISTANT_STORAGE_KEY);

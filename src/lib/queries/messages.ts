@@ -184,3 +184,15 @@ export function pendingUserMessages(db: Db): Message[] {
     .map(toMessage)
     .filter((m) => m.content.trim() !== "");
 }
+
+/** Dernier message proactif de Claude (alerte ou bilan), ou null (carte du tableau de bord). */
+export function latestProactive(db: Db): Message | null {
+  const row = db
+    .select()
+    .from(messages)
+    .where(and(eq(messages.role, "assistant"), inArray(messages.kind, ["alert", "weekly", "monthly"])))
+    .orderBy(desc(messages.id))
+    .limit(1)
+    .get();
+  return row ? toMessage(row) : null;
+}
