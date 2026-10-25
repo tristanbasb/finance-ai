@@ -26,7 +26,7 @@ export function HoldingsTable({ groups, onEdit }: HoldingsTableProps) {
           <div className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
             <div className="flex min-w-0 items-center gap-2.5">
               <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: g.account.color }} />
-              <h2 className="truncate text-[15px] font-semibold tracking-[-0.01em] text-fg">{g.account.name}</h2>
+              <h3 className="truncate text-[15px] font-semibold tracking-[-0.01em] text-fg">{g.account.name}</h3>
               <span className="shrink-0 text-[13px] text-muted">
                 {g.holdings.length} {g.holdings.length > 1 ? "positions" : "position"}
               </span>

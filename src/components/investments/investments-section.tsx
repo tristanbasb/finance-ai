@@ -16,7 +16,7 @@ import { HoldingsTable } from "./holdings-table";
 import { Pnl } from "./pnl";
 import { ASSET_TYPE_LABELS, type AssetType, type HoldingGroup, type HoldingRow } from "./types";
 
-export type InvestmentsViewProps = {
+export type InvestmentsSectionProps = {
   /** Comptes actifs : seuls comptés dans les totaux et la répartition. */
   groups: HoldingGroup[];
   /** Comptes archivés ayant encore des positions : affichés en retrait, hors totaux. */
@@ -34,8 +34,8 @@ const TYPE_COLORS: Record<AssetType, string> = {
   manual: "#8b5cf6",
 };
 
-/** Écran Investissements : synthèse, répartition, positions par compte et actualisation des cours. */
-export function InvestmentsView({ groups, archivedGroups = [], accounts }: InvestmentsViewProps) {
+/** Section « Investissements » : synthèse, répartition, positions par compte et actualisation des cours. */
+export function InvestmentsSection({ groups, archivedGroups = [], accounts }: InvestmentsSectionProps) {
   const router = useRouter();
   const [dialog, setDialog] = useState<DialogState>({ nonce: 0, open: false, holding: null });
   const [refreshing, setRefreshing] = useState(false);
@@ -99,27 +99,29 @@ export function InvestmentsView({ groups, archivedGroups = [], accounts }: Inves
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1">
+    <section id="investissements" aria-labelledby="patrimoine-investissements" className="scroll-mt-32 space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-0.5 px-1">
+          <h2 id="patrimoine-investissements" className="text-xl font-semibold tracking-[-0.02em] text-fg">
+            Investissements
+          </h2>
           <p className="text-[13px] text-muted">
             {count === 0 ? "Aucune position" : `${count} ${count > 1 ? "positions" : "position"}`}
           </p>
-          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Investissements</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hasMarket && (
-            <Button variant="secondary" onClick={refresh} loading={refreshing}>
+            <Button size="sm" variant="secondary" onClick={refresh} loading={refreshing}>
               {!refreshing && <RefreshCw aria-hidden />}
               Actualiser les cours
             </Button>
           )}
-          <Button onClick={openAdd}>
+          <Button size="sm" onClick={openAdd}>
             <Plus aria-hidden />
-            Ajouter
+            Ajouter une position
           </Button>
         </div>
-      </header>
+      </div>
 
       {count === 0 ? (
         <EmptyState
@@ -134,7 +136,7 @@ export function InvestmentsView({ groups, archivedGroups = [], accounts }: Inves
             <div className="flex flex-wrap justify-center gap-2">
               {accounts.length === 0 && (
                 <Link href="/settings#comptes" className={buttonClasses({ variant: "secondary" })}>
-                  Ouvrir les réglages
+                  Créer un compte
                 </Link>
               )}
               <Button onClick={openAdd}>
@@ -147,10 +149,10 @@ export function InvestmentsView({ groups, archivedGroups = [], accounts }: Inves
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-5">
-            <Card className="flex flex-col lg:col-span-3">
+            <Card className="flex flex-col bg-brand-soft/60 lg:col-span-3">
               <CardHeader>
                 <CardDescription>Valeur totale</CardDescription>
-                <p className="num pt-1 text-[40px] font-semibold leading-none tracking-[-0.035em] text-fg sm:text-5xl">
+                <p className="num pt-1 text-[36px] font-semibold leading-none tracking-[-0.035em] text-fg sm:text-[44px]">
                   {whole}
                   <span className="text-[0.5em] text-subtle">{rest}</span>
                 </p>
@@ -188,11 +190,11 @@ export function InvestmentsView({ groups, archivedGroups = [], accounts }: Inves
       )}
 
       {archivedGroups.length > 0 && (
-        <section aria-labelledby="comptes-archives" className="space-y-3">
+        <section aria-labelledby="comptes-archives" className="space-y-3 pt-2">
           <div className="space-y-0.5">
-            <h2 id="comptes-archives" className="text-[15px] font-semibold tracking-[-0.01em] text-muted">
+            <h3 id="comptes-archives" className="text-[15px] font-semibold tracking-[-0.01em] text-muted">
               Comptes archivés
-            </h2>
+            </h3>
             <p className="text-[13px] text-subtle">Non comptés dans les totaux ni dans la répartition.</p>
           </div>
           <div className="opacity-60">
@@ -208,6 +210,6 @@ export function InvestmentsView({ groups, archivedGroups = [], accounts }: Inves
         accounts={accounts}
         holding={dialog.holding}
       />
-    </div>
+    </section>
   );
 }

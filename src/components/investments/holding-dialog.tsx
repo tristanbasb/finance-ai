@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
-import { Dialog } from "@/components/ui/dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -205,7 +205,7 @@ export function HoldingDialog({ open, onClose, accounts, holding }: HoldingDialo
   );
 
   return (
-    <Dialog open={open} onClose={onClose} title={editing ? "Modifier la position" : "Nouvelle position"} footer={footer}>
+    <Sheet open={open} onClose={onClose} title={editing ? "Modifier la position" : "Nouvelle position"} footer={footer}>
       <form id={formId} onSubmit={submit} noValidate className="space-y-4">
         {noAccount ? (
           <div className="flex items-start gap-2.5 rounded-lg bg-accent-soft p-3 text-[13px] text-fg">
@@ -310,7 +310,7 @@ export function HoldingDialog({ open, onClose, accounts, holding }: HoldingDialo
           wrapperClassName="sm:max-w-[14rem]"
         />
       </form>
-    </Dialog>
+    </Sheet>
   );
 }
 
