@@ -184,6 +184,51 @@ describe("telegramApi", () => {
     expect(bodies[0]).toMatchObject({ chat_id: "9", text: "<b>x</b>", parse_mode: "HTML" });
     expect(bodies[1].parse_mode).toBeUndefined();
   });
+
+  const tooMany = (retryAfter: number) =>
+    Response.json(
+      { ok: false, error_code: 429, description: "Too Many Requests", parameters: { retry_after: retryAfter } },
+      { status: 429 },
+    );
+
+  it("sendMessage 429 : attend retry_after puis un seul nouvel essai", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(tooMany(3))
+        .mockResolvedValueOnce(Response.json({ ok: true, result: {} }));
+      const api = telegramApi(TOKEN, fetchMock as unknown as typeof fetch);
+      let done = false;
+      const p = api.sendMessage("9", "x").then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(2_900);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      await p;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sendMessage 429 : deuxième refus ou attente > 10 s → erreur", async () => {
+    vi.useFakeTimers();
+    try {
+      const twice = vi.fn<typeof fetch>(async () => tooMany(1));
+      const p = telegramApi(TOKEN, twice as unknown as typeof fetch).sendMessage("9", "x").catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await p).toMatchObject({ status: 429 });
+      expect(twice).toHaveBeenCalledTimes(2);
+
+      const long = vi.fn<typeof fetch>(async () => tooMany(30));
+      const err = await telegramApi(TOKEN, long as unknown as typeof fetch).sendMessage("9", "x").catch((e: unknown) => e);
+      expect(err).toMatchObject({ status: 429, retryAfter: 30 });
+      expect(long).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("liaison", () => {

@@ -31,6 +31,8 @@ export type TelegramApi = {
 export const CALL_TIMEOUT_MS = 10_000;
 /** Marge ajoutée au délai du long polling. */
 export const POLL_MARGIN_MS = 10_000;
+/** Attente maximale acceptée sur un 429 de `sendMessage` avant l'unique nouvel essai. */
+export const MAX_RETRY_AFTER_SEC = 10;
 
 /** Erreur de l'API Telegram ou du réseau (`status` : code HTTP/Telegram, absent si réseau). */
 export class TelegramError extends Error {
@@ -95,16 +97,26 @@ export function telegramApi(token: string, fetchImpl: typeof fetch = fetch): Tel
         signal,
       ),
     sendMessage: async (chatId, text, opts) => {
-      await call(
-        "sendMessage",
-        {
-          chat_id: chatId,
-          text,
-          ...(opts?.plain ? {} : { parse_mode: "HTML" }),
-          link_preview_options: { is_disabled: true },
-        },
-        CALL_TIMEOUT_MS,
-      );
+      const send = () =>
+        call(
+          "sendMessage",
+          {
+            chat_id: chatId,
+            text,
+            ...(opts?.plain ? {} : { parse_mode: "HTML" }),
+            link_preview_options: { is_disabled: true },
+          },
+          CALL_TIMEOUT_MS,
+        );
+      try {
+        await send();
+      } catch (err) {
+        // 429 : une seule nouvelle tentative après l'attente demandée, si elle reste courte.
+        const wait = err instanceof TelegramError && err.status === 429 ? err.retryAfter : undefined;
+        if (wait === undefined || wait < 0 || wait > MAX_RETRY_AFTER_SEC) throw err;
+        await new Promise((r) => setTimeout(r, wait * 1000));
+        await send();
+      }
     },
     sendChatAction: async (chatId, action) => {
       await call("sendChatAction", { chat_id: chatId, action }, CALL_TIMEOUT_MS);
