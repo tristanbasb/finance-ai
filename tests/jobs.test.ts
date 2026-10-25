@@ -1,0 +1,257 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { createDb } from "@/lib/db";
+import { runMigrations } from "@/lib/db/migrate";
+import { seedDefaults } from "@/lib/db/seed";
+import { accounts, holdings, jobRuns, messages } from "@/lib/db/schema";
+import { digestPeriod, dueDigests, hourKey, isoWeek } from "@/lib/jobs/periods";
+import { AI_REQUIRED_NOTICE, generateDigest } from "@/lib/jobs/digests";
+import { claimJob, startScheduler, tick, type TickDeps } from "@/lib/jobs/scheduler";
+import { DEFAULT_DIGEST_PREFS, getSetting, setSetting } from "@/lib/settings";
+import type { Ai } from "@/lib/ai/client";
+import type { PriceDeps } from "@/lib/prices";
+import * as alerts from "@/lib/alerts/engine";
+import { GET as getDigests, PUT as putDigests } from "@/app/api/settings/digests/route";
+import { GET as getAlerts, PUT as putAlerts } from "@/app/api/settings/alerts/route";
+import { z } from "zod";
+
+const routeDb = vi.hoisted(() => ({ db: null as unknown }));
+vi.mock("@/lib/db", async (orig) => ({ ...(await orig<typeof import("@/lib/db")>()), getDb: () => routeDb.db }));
+
+function freshDb() {
+  const db = createDb(":memory:");
+  runMigrations(db);
+  seedDefaults(db);
+  return db;
+}
+
+const fakeAi = { client: {}, model: "m" } as unknown as Ai;
+const prefs = DEFAULT_DIGEST_PREFS; // weekly + monthly, 8 h
+
+// Lundi 26 octobre 2026.
+const mon = (h: number, min = 0) => new Date(2026, 9, 26, h, min);
+
+beforeEach(() => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(alerts, "runAlertChecks").mockResolvedValue(undefined);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  const g = globalThis as { __financeScheduler?: unknown };
+  if (g.__financeScheduler) clearInterval(g.__financeScheduler as ReturnType<typeof setInterval>);
+  g.__financeScheduler = undefined;
+  vi.useRealTimers();
+});
+
+describe("isoWeek", () => {
+  it("1er janvier", () => {
+    expect(isoWeek(new Date(2026, 0, 1))).toBe("2026-W01"); // jeudi
+    expect(isoWeek(new Date(2021, 0, 1))).toBe("2020-W53"); // vendredi
+    expect(isoWeek(new Date(2024, 11, 30))).toBe("2025-W01"); // lundi
+  });
+  it("semaine 53", () => {
+    expect(isoWeek(new Date(2020, 11, 31))).toBe("2020-W53");
+    expect(isoWeek(new Date(2021, 0, 3))).toBe("2020-W53");
+    expect(isoWeek(new Date(2021, 0, 4))).toBe("2021-W01");
+  });
+  it("semaine courante", () => expect(isoWeek(mon(9))).toBe("2026-W44"));
+});
+
+describe("dueDigests", () => {
+  it("lundi avant / après 8 h", () => {
+    expect(dueDigests(mon(7, 59), prefs, { monthly: "2026-10" })).toEqual([]);
+    expect(dueDigests(mon(8), prefs, { monthly: "2026-10" })).toEqual(["weekly"]);
+  });
+  it("mardi : dû même avant l'heure (rattrapage)", () => {
+    expect(dueDigests(new Date(2026, 9, 27, 3), prefs, { monthly: "2026-10" })).toEqual(["weekly"]);
+  });
+  it("déjà envoyé cette semaine", () => {
+    expect(dueDigests(new Date(2026, 9, 28, 12), prefs, { weekly: "2026-W44", monthly: "2026-10" })).toEqual([]);
+  });
+  it("mensuel : 1er avant / après l'heure, puis le 2", () => {
+    const w = { weekly: isoWeek(new Date(2026, 10, 1)) };
+    expect(dueDigests(new Date(2026, 10, 1, 7), { ...prefs, weekly: false }, w)).toEqual([]);
+    expect(dueDigests(new Date(2026, 10, 1, 8), { ...prefs, weekly: false }, w)).toEqual(["monthly"]);
+    expect(dueDigests(new Date(2026, 10, 2, 1), { ...prefs, weekly: false }, w)).toEqual(["monthly"]);
+    expect(dueDigests(new Date(2026, 10, 2, 9), { ...prefs, weekly: false }, { monthly: "2026-11" })).toEqual([]);
+  });
+  it("préférences désactivées", () => {
+    expect(dueDigests(mon(9), { ...prefs, weekly: false, monthly: false }, {})).toEqual([]);
+  });
+});
+
+describe("digestPeriod", () => {
+  it("semaine précédente et mois précédent", () => {
+    expect(digestPeriod("weekly", mon(9))).toEqual({
+      start: "2026-10-19",
+      end: "2026-10-25",
+      title: "Bilan de la semaine du 19 au 25 octobre",
+    });
+    expect(digestPeriod("weekly", new Date(2026, 10, 3, 9)).title).toBe(
+      "Bilan de la semaine du 26 octobre au 1er novembre",
+    );
+    expect(digestPeriod("monthly", new Date(2026, 10, 2, 9))).toEqual({
+      start: "2026-10-01",
+      end: "2026-10-31",
+      title: "Bilan de octobre 2026",
+    });
+    expect(digestPeriod("monthly", new Date(2027, 0, 5)).start).toBe("2026-12-01");
+  });
+});
+
+describe("claimJob", () => {
+  it("un seul gagnant par période", () => {
+    const db = freshDb();
+    expect(claimJob(db, "weekly", "2026-W44")).toBe(true);
+    expect(claimJob(db, "weekly", "2026-W44")).toBe(false);
+    expect(claimJob(db, "weekly", "2026-W45")).toBe(true);
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()?.lastPeriod).toBe("2026-W45");
+  });
+});
+
+function digestMessages(db: ReturnType<typeof freshDb>) {
+  return db.select().from(messages).all().filter((m) => m.kind === "weekly" || m.kind === "monthly");
+}
+
+describe("tick : bilans", () => {
+  it("génère le bilan hebdo une seule fois sur deux ticks", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn(async () => "**Bilan**\n\ncorps");
+    const deps: TickDeps = { ai: fakeAi, generate };
+    await tick(db, mon(8, 1), deps);
+    await tick(db, mon(8, 2), deps);
+    expect(generate).toHaveBeenCalledTimes(1);
+    const rows = digestMessages(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "weekly", role: "assistant", content: "**Bilan**\n\ncorps" });
+  });
+
+  it("rattrapage au premier tick (mardi, serveur éteint lundi)", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn(async () => "x");
+    await tick(db, new Date(2026, 9, 27, 14), { ai: fakeAi, generate });
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(digestMessages(db)).toHaveLength(1);
+  });
+
+  it("échec de génération : réclamation libérée, nouvel essai au tick suivant", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue("ok");
+    await tick(db, mon(9), { ai: fakeAi, generate });
+    expect(digestMessages(db)).toHaveLength(0);
+    expect(db.select().from(jobRuns).where(eq(jobRuns.job, "weekly")).get()).toBeUndefined();
+    await tick(db, mon(9, 1), { ai: fakeAi, generate });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(digestMessages(db)).toHaveLength(1);
+  });
+
+  it("IA absente : message unique par type", async () => {
+    const db = freshDb();
+    await tick(db, mon(9), { ai: null });
+    await tick(db, mon(9, 1), { ai: null });
+    // semaine suivante : toujours pas de nouveau message
+    await tick(db, new Date(2026, 10, 2, 9), { ai: null });
+    const rows = digestMessages(db);
+    expect(rows.map((r) => r.kind).sort()).toEqual(["monthly", "weekly"]);
+    expect(rows.every((r) => r.content === AI_REQUIRED_NOTICE)).toBe(true);
+    expect(getSetting(db, "digest_ai_notice_weekly", z.boolean(), false)).toBe(true);
+  });
+
+  it("ne lève jamais", async () => {
+    const db = freshDb();
+    const generate = vi.fn().mockRejectedValue(new Error("boom"));
+    await expect(tick(db, mon(9), { ai: fakeAi, generate })).resolves.toBeUndefined();
+  });
+});
+
+describe("tick : cours horaires", () => {
+  function withHolding(db: ReturnType<typeof freshDb>) {
+    const acc = db.select().from(accounts).get()!;
+    db.insert(holdings)
+      .values({ accountId: acc.id, symbol: "AAPL", name: "Apple", assetType: "stock", quantity: 1, avgPrice: 100 })
+      .run();
+  }
+  const stock = vi.fn(async () => new Map([["AAPL", { price: 150, currency: "EUR" }]]));
+  const priceDeps = (): PriceDeps => ({ stock, crypto: async () => new Map(), fx: async () => 1 });
+
+  it("une fois par heure, seulement avec des positions", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, weekly: false, monthly: false });
+    stock.mockClear();
+    await tick(db, mon(9, 0), { ai: null, prices: priceDeps() });
+    expect(stock).not.toHaveBeenCalled(); // pas de position
+    withHolding(db);
+    await tick(db, mon(9, 5), { ai: null, prices: priceDeps() });
+    await tick(db, mon(9, 40), { ai: null, prices: priceDeps() });
+    expect(stock).toHaveBeenCalledTimes(1);
+    expect(alerts.runAlertChecks).toHaveBeenCalledWith(db, { prices: true, goals: true });
+    await tick(db, mon(10, 1), { ai: null, prices: priceDeps() });
+    expect(stock).toHaveBeenCalledTimes(2);
+    expect(hourKey(mon(10, 1))).toBe("2026-10-26T10");
+  });
+
+  it("une erreur de cours ne bloque pas les bilans", async () => {
+    const db = freshDb();
+    withHolding(db);
+    const generate = vi.fn(async () => "x");
+    const prices: PriceDeps = { stock: async () => { throw new Error("réseau"); }, crypto: async () => new Map(), fx: async () => 1 };
+    await tick(db, mon(9), { ai: fakeAi, generate, prices });
+    expect(generate).toHaveBeenCalled();
+  });
+});
+
+describe("startScheduler", () => {
+  it("tick immédiat, garde globalThis, arrêt", async () => {
+    vi.useFakeTimers();
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, monthly: false });
+    const generate = vi.fn(async () => "x");
+    const stop = startScheduler(db, { intervalMs: 1000, now: () => mon(9), deps: { ai: fakeAi, generate } });
+    const again = startScheduler(db, { now: () => mon(9), deps: { ai: fakeAi, generate } });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(generate).toHaveBeenCalledTimes(1);
+    again();
+    stop();
+    expect((globalThis as { __financeScheduler?: unknown }).__financeScheduler).toBeUndefined();
+  });
+});
+
+describe("generateDigest", () => {
+  it("préfixe le titre et concatène le texte", async () => {
+    const db = freshDb();
+    const events = [{ type: "text", text: "Bon" }, { type: "tool", name: "x" }, { type: "text", text: "jour" }, { type: "done" }];
+    const chat = await import("@/lib/ai/chat");
+    vi.spyOn(chat, "runChat").mockImplementation((async function* () {
+      for (const e of events) yield e;
+    }) as unknown as typeof chat.runChat);
+    const out = await generateDigest(db, fakeAi, "weekly", mon(9));
+    expect(out).toBe("**Bilan de la semaine du 19 au 25 octobre**\n\nBonjour");
+  });
+});
+
+describe("routes de réglages", () => {
+  const put = (fn: typeof putDigests, body: unknown) =>
+    fn(new Request("http://x/api", { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
+
+  beforeEach(() => {
+    routeDb.db = freshDb();
+  });
+
+  it("digests : défauts, fusion partielle, validation", async () => {
+    expect(await (await getDigests()).json()).toEqual(DEFAULT_DIGEST_PREFS);
+    const res = await put(putDigests, { hour: 18 });
+    expect(await res.json()).toEqual({ weekly: true, monthly: true, hour: 18 });
+    expect(await (await getDigests()).json()).toMatchObject({ hour: 18 });
+    expect((await put(putDigests, { hour: 30 })).status).toBe(400);
+  });
+
+  it("alertes : défauts, fusion partielle, validation", async () => {
+    expect(await (await getAlerts()).json()).toMatchObject({ enabled: true, priceMovePct: 5 });
+    const res = await put(putAlerts, { enabled: false, priceMovePct: 8 });
+    expect(await res.json()).toMatchObject({ enabled: false, priceMovePct: 8, budget: true });
+    expect((await put(putAlerts, { priceMovePct: -1 })).status).toBe(400);
+  });
+});

@@ -4,8 +4,7 @@ import { scheduleAlertChecks } from "@/lib/alerts/trigger";
 import { BadRequestError, withErrors } from "@/lib/api";
 import { todayLocal } from "@/lib/dates";
 import { refreshPrices } from "@/lib/prices";
-import { coingeckoFetcher } from "@/lib/prices/coingecko";
-import { yahooFetcher, yahooFx } from "@/lib/prices/yahoo";
+import { realPriceDeps } from "@/lib/prices/real-deps";
 import { recordSnapshot } from "@/lib/queries/snapshots";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +24,7 @@ export const POST = withErrors(async (req: Request) => {
   }
   const { force = true } = body.parse(json);
   const db = getDb();
-  const result = await refreshPrices(
-    db,
-    { stock: yahooFetcher, crypto: coingeckoFetcher, fx: yahooFx },
-    new Date(),
-    force,
-  );
+  const result = await refreshPrices(db, realPriceDeps(), new Date(), force);
   recordSnapshot(db, todayLocal());
   scheduleAlertChecks({ prices: true, goals: true });
   return Response.json(result);
