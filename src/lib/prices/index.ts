@@ -3,10 +3,13 @@ import type { Db } from "@/lib/db";
 import { holdings, prices } from "@/lib/db/schema";
 import { unitPrice, type Holding } from "@/lib/queries/holdings";
 
-/** Cours en unités de la devise (pas en centimes), par symbole. */
+/** Cours en unités de la devise (pas en centimes) ; `changePct` = variation du jour en %. */
+export type PriceQuote = { price: number; currency: string; changePct?: number };
+
+/** Cours par symbole. */
 export type PriceFetcher = (
   symbols: string[],
-) => Promise<Map<string, { price: number; currency: string }>>;
+) => Promise<Map<string, PriceQuote>>;
 
 export type PriceDeps = {
   stock: PriceFetcher;
@@ -123,11 +126,13 @@ export async function refreshPrices(
       try {
         const cents = await toEuroCents(quote.price, quote.currency, fx);
         if (!Number.isFinite(cents)) throw new Error("Prix non fini");
+        const changePct =
+          typeof quote.changePct === "number" && Number.isFinite(quote.changePct) ? quote.changePct : null;
         db.insert(prices)
-          .values({ symbol, price: cents, currency: "EUR", fetchedAt: now.getTime() })
+          .values({ symbol, price: cents, currency: "EUR", fetchedAt: now.getTime(), changePct })
           .onConflictDoUpdate({
             target: prices.symbol,
-            set: { price: cents, currency: "EUR", fetchedAt: now.getTime() },
+            set: { price: cents, currency: "EUR", fetchedAt: now.getTime(), changePct },
           })
           .run();
         updated++;

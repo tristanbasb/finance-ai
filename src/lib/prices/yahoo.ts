@@ -1,5 +1,5 @@
 import YahooFinance from "yahoo-finance2";
-import type { PriceFetcher } from "./index";
+import type { PriceFetcher, PriceQuote } from "./index";
 import { TimeoutError, withTimeout } from "./timeout";
 
 // Notices (enquête, etc.) désactivées pour garder des journaux serveur propres.
@@ -8,12 +8,18 @@ const yahoo = new YahooFinance({ suppressNotices: ["yahooSurvey", "ripHistorical
 /** Délai maximal par appel à Yahoo Finance. */
 const TIMEOUT_MS = 8000;
 
-type Quote = { symbol: string; regularMarketPrice?: number; currency?: string };
+type Quote = {
+  symbol: string;
+  regularMarketPrice?: number;
+  currency?: string;
+  regularMarketChangePercent?: number;
+};
 
-const FIELDS: ("symbol" | "regularMarketPrice" | "currency")[] = [
+const FIELDS: ("symbol" | "regularMarketPrice" | "currency" | "regularMarketChangePercent")[] = [
   "symbol",
   "regularMarketPrice",
   "currency",
+  "regularMarketChangePercent",
 ];
 
 async function quoteMany(symbols: string[]): Promise<Quote[]> {
@@ -27,11 +33,15 @@ async function quoteMany(symbols: string[]): Promise<Quote[]> {
 
 /** Cours actions/ETF via Yahoo Finance ; repli symbole par symbole si le lot échoue. */
 export const yahooFetcher: PriceFetcher = async (symbols) => {
-  const out = new Map<string, { price: number; currency: string }>();
+  const out = new Map<string, PriceQuote>();
   const collect = (quotes: Quote[]) => {
     for (const q of quotes) {
       if (typeof q.regularMarketPrice === "number" && q.currency) {
-        out.set(q.symbol, { price: q.regularMarketPrice, currency: q.currency });
+        const changePct =
+          typeof q.regularMarketChangePercent === "number" && Number.isFinite(q.regularMarketChangePercent)
+            ? q.regularMarketChangePercent
+            : undefined;
+        out.set(q.symbol, { price: q.regularMarketPrice, currency: q.currency, changePct });
       }
     }
   };

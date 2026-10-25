@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { scheduleAlertChecks } from "@/lib/alerts/trigger";
 import { BadRequestError, withErrors } from "@/lib/api";
 import { todayLocal } from "@/lib/dates";
 import { refreshPrices } from "@/lib/prices";
@@ -31,5 +32,6 @@ export const POST = withErrors(async (req: Request) => {
     force,
   );
   recordSnapshot(db, todayLocal());
+  scheduleAlertChecks({ prices: true, goals: true });
   return Response.json(result);
 });

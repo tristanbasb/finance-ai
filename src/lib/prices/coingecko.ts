@@ -1,4 +1,4 @@
-import type { PriceFetcher } from "./index";
+import type { PriceFetcher, PriceQuote } from "./index";
 
 const BASE = "https://api.coingecko.com/api/v3";
 const TIMEOUT_MS = 8000;
@@ -33,7 +33,7 @@ async function resolveId(symbol: string): Promise<string | null> {
 
 /** Cours crypto en EUR via l'API publique CoinGecko (sans clé). */
 export const coingeckoFetcher: PriceFetcher = async (symbols) => {
-  const out = new Map<string, { price: number; currency: string }>();
+  const out = new Map<string, PriceQuote>();
   const idToSymbols = new Map<string, string[]>();
   for (const symbol of symbols) {
     let id: string | null;
@@ -50,12 +50,14 @@ export const coingeckoFetcher: PriceFetcher = async (symbols) => {
   if (idToSymbols.size === 0) return out;
   const ids = [...idToSymbols.keys()].join(",");
   const data = (await getJson(
-    `${BASE}/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=eur`,
-  )) as Record<string, { eur?: number } | undefined>;
+    `${BASE}/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=eur&include_24hr_change=true`,
+  )) as Record<string, { eur?: number; eur_24h_change?: number } | undefined>;
   for (const [id, syms] of idToSymbols) {
     const eur = data[id]?.eur;
     if (typeof eur !== "number") continue;
-    for (const s of syms) out.set(s, { price: eur, currency: "EUR" });
+    const change = data[id]?.eur_24h_change;
+    const changePct = typeof change === "number" && Number.isFinite(change) ? change : undefined;
+    for (const s of syms) out.set(s, { price: eur, currency: "EUR", changePct });
   }
   return out;
 };

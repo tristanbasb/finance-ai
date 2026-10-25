@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { scheduleAlertChecks } from "@/lib/alerts/trigger";
 import { parseId, readJson, withErrors } from "@/lib/api";
 import { deleteTransaction, updateTransaction } from "@/lib/queries/transactions";
 import { transactionInput } from "@/lib/validation";
@@ -10,7 +11,9 @@ type Ctx = { params: Promise<{ id: string }> };
 export const PATCH = withErrors(async (req: Request, { params }: Ctx) => {
   const id = await parseId(params);
   const patch = transactionInput.partial().parse(await readJson(req));
-  return Response.json(updateTransaction(getDb(), id, patch));
+  const updated = updateTransaction(getDb(), id, patch);
+  scheduleAlertChecks({ txIds: [id], goals: true });
+  return Response.json(updated);
 });
 
 export const DELETE = withErrors(async (_req: Request, { params }: Ctx) => {

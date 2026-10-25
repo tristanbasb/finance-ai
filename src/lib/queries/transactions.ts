@@ -77,12 +77,16 @@ export function createTransaction(db: Db, input: TransactionInput): Transaction 
   return db.insert(transactions).values(input).returning().get();
 }
 
-/** Insère toutes les transactions dans une seule transaction SQL (tout ou rien) ; renvoie leur nombre. */
+/** Insère toutes les transactions dans une seule transaction SQL (tout ou rien) ; renvoie leurs ids. */
+export function insertTransactions(db: Db, txs: NewTransaction[]): number[] {
+  return db.transaction((tx) =>
+    txs.map((t) => tx.insert(transactions).values(t).returning({ id: transactions.id }).get()!.id),
+  );
+}
+
+/** Comme `insertTransactions` ; renvoie le nombre de transactions créées. */
 export function createTransactions(db: Db, txs: NewTransaction[]): number {
-  db.transaction((tx) => {
-    for (const t of txs) tx.insert(transactions).values(t).run();
-  });
-  return txs.length;
+  return insertTransactions(db, txs).length;
 }
 
 export function updateTransaction(db: Db, id: number, patch: Partial<TransactionInput>): Transaction {
