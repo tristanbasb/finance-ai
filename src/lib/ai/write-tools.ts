@@ -1,12 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { after } from "next/server";
 import { and, eq, gte, gt, inArray, isNull, lt, lte, type SQL } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import type { Db } from "@/lib/db";
 import { accounts, categories, goals, holdings, transactions } from "@/lib/db/schema";
 import { ACCOUNT_TYPES, ASSET_TYPES } from "@/lib/db/schema";
 import { ConflictError, NotFoundError } from "@/lib/api";
-import { runAlertChecks, type AlertScope } from "@/lib/alerts/engine";
+import type { AlertScope } from "@/lib/alerts/engine";
+import { runAlertChecksSoon } from "@/lib/alerts/trigger";
 import { CATEGORY_ICON_NAMES } from "@/components/category-icon";
 import { formatEUR } from "@/lib/money";
 import { defaultAccountId, MAX_AMOUNT_CENTS } from "@/lib/quick-add";
@@ -758,15 +758,6 @@ const handlers: { [N in ToolName]: Handler<N> } = {
 const isToolName = (name: string): name is ToolName => Object.hasOwn(schemas, name);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Vérifications d'alertes après la réponse HTTP ; hors requête (`after` indisponible), lancées tout de suite. */
-function triggerAlerts(db: Db, scope: AlertScope): void {
-  try {
-    after(() => runAlertChecks(db, scope));
-  } catch {
-    void runAlertChecks(db, scope);
-  }
-}
-
 const UNCHANGED_SUMMARY = "Aucun changement : les valeurs demandées sont déjà en place.";
 
 // Champs des schémas de l'API (camelCase) → paramètres des outils exposés à Claude.
@@ -825,7 +816,7 @@ export async function runWriteTool(db: Db, name: string, input: unknown, ctx: Wr
     if (actionId === undefined) {
       return { result: { ok: true, unchanged: true, summary: UNCHANGED_SUMMARY, ...done.data } };
     }
-    if (done.alerts) triggerAlerts(db, done.alerts);
+    if (done.alerts) runAlertChecksSoon(db, done.alerts);
     return { result: { ok: true, summary: done.summary, ...done.data }, actionId };
   } catch (err) {
     return { result: { error: errorMessage(err, name) } };
@@ -1074,5 +1065,5 @@ export const writeTools: Anthropic.Tool[] = [
   },
 ];
 
-/** Noms des outils d'écriture (indicateur « Modification de vos données… » dans l'interface). */
+/** Noms des outils d'écriture (côté client : `write-tool-names.ts`, module pur). */
 export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set(writeTools.map((t) => t.name));

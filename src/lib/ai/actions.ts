@@ -2,6 +2,8 @@ import { eq, inArray } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { Db } from "@/lib/db";
 import { accounts, aiActions, categories, goals, holdings, transactions } from "@/lib/db/schema";
+import { formatDateFull } from "@/lib/format";
+import { formatEUR } from "@/lib/money";
 
 export type ChangeTable = "transactions" | "categories" | "goals" | "accounts" | "holdings";
 
@@ -13,6 +15,9 @@ export type Change = {
 };
 
 const DAY_MS = 24 * 3600 * 1000;
+
+/** Raison renvoyée pour un id absent du journal (404 côté API). */
+export const ACTION_NOT_FOUND = "Action introuvable.";
 
 const TABLES = { transactions, categories, goals, accounts, holdings } as const;
 const TABLE_LABELS: Record<ChangeTable, string> = {
@@ -159,7 +164,7 @@ export type ActionStatus = {
 export function actionStatus(db: Db, id: number, now = Date.now()): ActionStatus {
   const row = db.select().from(aiActions).where(eq(aiActions.id, id)).get();
   if (!row) {
-    return { undoable: false, reason: "Action introuvable.", summary: "", undoneAt: null, createdAt: 0, tool: "", changes: [] };
+    return { undoable: false, reason: ACTION_NOT_FOUND, summary: "", undoneAt: null, createdAt: 0, tool: "", changes: [] };
   }
   const parsed = parseChanges(row.changes);
   const changes = parsed ?? [];
@@ -194,4 +199,73 @@ export function undoAction(db: Db, id: number, now = Date.now()): { ok: true; su
     return { ok: false, reason: `Annulation impossible : ${detail}` };
   }
   return { ok: true, summary: status.summary };
+}
+
+// ---------------------------------------------------------------------------
+// Détail lisible (carte « Fait » repliable dans l'interface)
+
+const ITEM_NOUNS: Record<ChangeTable, { noun: string; feminine: boolean }> = {
+  transactions: { noun: "Opération", feminine: true },
+  categories: { noun: "Catégorie", feminine: true },
+  goals: { noun: "Objectif", feminine: false },
+  accounts: { noun: "Compte", feminine: false },
+  holdings: { noun: "Position", feminine: true },
+};
+
+export const MAX_ACTION_ITEMS = 20;
+
+function itemLine(c: Change): string {
+  const { noun, feminine } = ITEM_NOUNS[c.table];
+  const row = c.after ?? c.before ?? {};
+  const name = row.label ?? row.name ?? row.symbol;
+  let line = typeof name === "string" && name ? `${noun} « ${name} »` : `${noun} n° ${c.id}`;
+  if (c.table === "transactions" && typeof row.amount === "number" && typeof row.date === "string") {
+    const sign = row.amount < 0 ? "\u2212" : "+";
+    line += ` (${sign}${formatEUR(Math.abs(row.amount))}, ${formatDateFull(row.date)})`;
+  }
+  const verb = c.before === null ? "ajouté" : c.after === null ? "supprimé" : "modifié";
+  return `${line} : ${verb}${feminine ? "e" : ""}`;
+}
+
+/**
+ * Une ligne lisible par élément touché (« Opération « Pain » (−12,00 €, 26 octobre 2026) :
+ * ajoutée »), au plus 20, puis « … et N autres éléments ». Pur.
+ */
+export function actionItems(changes: Change[]): string[] {
+  const lines = changes.slice(0, MAX_ACTION_ITEMS).map(itemLine);
+  const rest = changes.length - MAX_ACTION_ITEMS;
+  if (rest > 0) lines.push(`… et ${rest} autre${rest > 1 ? "s" : ""} élément${rest > 1 ? "s" : ""}`);
+  return lines;
+}
+
+/** Vue d'une action pour l'interface (`GET /api/ai/actions`). */
+export type ActionView = {
+  id: number;
+  tool: string;
+  summary: string;
+  createdAt: number;
+  undoneAt: number | null;
+  undoable: boolean;
+  reason?: string;
+  items: string[];
+};
+
+/** Vues des actions demandées, dans l'ordre des ids ; les ids inconnus sont omis. */
+export function actionViews(db: Db, ids: number[], now = Date.now()): ActionView[] {
+  const views: ActionView[] = [];
+  for (const id of ids) {
+    const s = actionStatus(db, id, now);
+    if (s.reason === ACTION_NOT_FOUND) continue;
+    views.push({
+      id,
+      tool: s.tool,
+      summary: s.summary,
+      createdAt: s.createdAt,
+      undoneAt: s.undoneAt,
+      undoable: s.undoable,
+      ...(s.reason !== undefined ? { reason: s.reason } : {}),
+      items: actionItems(s.changes),
+    });
+  }
+  return views;
 }

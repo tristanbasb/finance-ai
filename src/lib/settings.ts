@@ -85,3 +85,12 @@ export function mergePrefs<T extends z.ZodObject>(schema: T, current: z.infer<T>
   const present = Object.fromEntries(Object.entries(parsed).filter(([k]) => Object.hasOwn(raw as object, k)));
   return schema.parse({ ...current, ...present });
 }
+
+/** « Autoriser Claude à modifier mes données » (tours déclenchés par l'utilisateur) ; vrai par défaut. */
+export function aiCanWrite(db: Db): boolean {
+  return getSetting(db, "ai_can_write", z.boolean(), true);
+}
+
+export function setAiCanWrite(db: Db, enabled: boolean): void {
+  setSetting(db, "ai_can_write", enabled);
+}

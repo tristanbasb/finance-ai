@@ -33,6 +33,8 @@ export function addMessage(
     source: MessageSource;
     meta?: Record<string, unknown> | null;
     now?: number;
+    /** Déjà lu (message système sans intérêt de notification) : date de lecture. */
+    readAt?: number | null;
   },
 ): Message {
   const row = db
@@ -44,6 +46,7 @@ export function addMessage(
       source: m.source,
       meta: m.meta ? JSON.stringify(m.meta) : null,
       createdAt: m.now ?? Date.now(),
+      ...(m.readAt != null ? { readAt: m.readAt } : {}),
     })
     .returning()
     .get();
