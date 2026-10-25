@@ -51,7 +51,7 @@ export function MobileTabBar() {
       aria-label="Navigation principale"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
     >
-      <ul className="mx-auto grid h-16 max-w-md grid-cols-5">
+      <ul className="mx-auto grid h-16 max-w-md grid-cols-4">
         {NAV_ITEMS.filter((i) => i.primary).map(({ href, label, shortLabel, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (

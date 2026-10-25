@@ -22,7 +22,7 @@ const variants: Record<ButtonVariant, string> = {
 
 // Sur écran tactile (pointeur grossier), la taille par défaut atteint 44 px.
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3.5 text-[13px] pointer-coarse:h-9",
+  sm: "h-8 px-3.5 text-[13px] pointer-coarse:h-11",
   md: "h-10 px-5 text-sm pointer-coarse:h-11",
   lg: "h-12 px-6 text-[15px]",
   icon: "size-10 pointer-coarse:size-11",

@@ -90,3 +90,20 @@ describe("Chip teintée", () => {
     }
   });
 });
+
+describe("texte blanc sur la carte héros Patrimoine", () => {
+  // Calque sombre bg-black/20 (pastilles) sur l'extrémité la plus claire du dégradé, halo blanc 10 % inclus.
+  const mix = (hex: string, over: string, a: number) => {
+    const p = (h: string) => [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
+    const [x, y] = [p(hex), p(over)];
+    return "#" + x.map((v, i) => Math.round(v * (1 - a) + y[i] * a).toString(16).padStart(2, "0")).join("");
+  };
+  for (const end of ["brand-from", "brand-to"]) {
+    it(`blanc plein lisible sur ${end}, avec halo et pastille sombre`, () => {
+      const base = resolve(light, end);
+      expect(contrastRatio("#ffffff", base)).toBeGreaterThanOrEqual(4.5);
+      const haloPill = mix(mix(base, "#ffffff", 0.1), "#000000", 0.15);
+      expect(contrastRatio("#ffffff", haloPill)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});

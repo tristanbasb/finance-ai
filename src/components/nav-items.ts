@@ -1,10 +1,9 @@
 import {
   ArrowLeftRight,
   Bot,
-  ChartLine,
   LayoutDashboard,
+  Landmark,
   type LucideIcon,
-  PiggyBank,
   Settings,
 } from "lucide-react";
 
@@ -21,8 +20,7 @@ export type NavItem = {
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/", label: "Tableau de bord", shortLabel: "Accueil", icon: LayoutDashboard, primary: true },
   { href: "/transactions", label: "Transactions", shortLabel: "Transactions", icon: ArrowLeftRight, primary: true },
-  { href: "/patrimoine#comptes", label: "Épargne", shortLabel: "Épargne", icon: PiggyBank, primary: true },
-  { href: "/patrimoine#investissements", label: "Investissements", shortLabel: "Invest.", icon: ChartLine, primary: true },
+  { href: "/patrimoine", label: "Patrimoine", shortLabel: "Patrimoine", icon: Landmark, primary: true },
   { href: "/assistant", label: "Assistant", shortLabel: "Assistant", icon: Bot, primary: true },
   { href: "/settings", label: "Réglages", shortLabel: "Réglages", icon: Settings, primary: false },
 ];

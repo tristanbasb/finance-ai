@@ -32,9 +32,8 @@ export function chipClasses({
   className,
 }: { selected?: boolean; tinted?: boolean; className?: string } = {}): string {
   return cn(
-    // 36 px de haut visuellement, zone tactile étendue à 44 px par le pseudo-élément.
-    "relative inline-flex h-9 shrink-0 select-none items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold",
-    "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",
+    // 36 px au pointeur fin, 44 px (h-11) au pointeur grossier.
+    "relative inline-flex h-9 pointer-coarse:h-11 shrink-0 select-none items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold",
     "transition-[background-color,border-color,color,box-shadow,filter] duration-150",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
     "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",

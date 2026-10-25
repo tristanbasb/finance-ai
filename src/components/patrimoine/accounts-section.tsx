@@ -35,7 +35,7 @@ export function AccountsSection({ accounts }: { accounts: PatrimoineAccount[] })
   return (
     <section id="comptes" aria-labelledby="patrimoine-comptes" className="scroll-mt-32 space-y-4">
       {/* Alias d'ancre : l'ancienne rubrique Épargne. */}
-      <span id="epargne" aria-hidden />
+      <span id="epargne" aria-hidden className="scroll-mt-32" />
       <div className="flex items-center justify-between gap-3">
         <h2 id="patrimoine-comptes" className="px-1 text-xl font-semibold tracking-[-0.02em] text-fg">
           Comptes
