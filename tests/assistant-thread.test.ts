@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   badgeCount,
   excerpt,
+  hasSavedQuestion,
   isProactive,
+  isSeen,
   kindLabel,
   mergeMessages,
   relativeTime,
@@ -146,5 +148,53 @@ describe("excerpt : titres", () => {
   it("sépare un titre du texte qui suit", () => {
     expect(excerpt("## Bilan de septembre\n\nRevenus **3 200 €**")).toBe("Bilan de septembre — Revenus 3 200 €");
     expect(excerpt("# Titre seul #")).toBe("Titre seul");
+  });
+});
+
+describe("mergeMessages : référence stable", () => {
+  it("renvoie la liste courante telle quelle si rien n'a changé", () => {
+    const current = [msg(1), msg(2, { readAt: 5 })];
+    expect(mergeMessages(current, [msg(1), msg(2, { readAt: 5 })])).toBe(current);
+    expect(mergeMessages(current, [])).toBe(current);
+  });
+
+  it("renvoie une nouvelle liste si un message est ajouté ou lu", () => {
+    const current = [msg(1), msg(2)];
+    expect(mergeMessages(current, [msg(3)])).not.toBe(current);
+    const read = mergeMessages(current, [msg(2, { readAt: 9 })]);
+    expect(read).not.toBe(current);
+    expect(read[1].readAt).toBe(9);
+  });
+});
+
+describe("isSeen", () => {
+  it("vu dès 40 % du message visible", () => {
+    expect(isSeen({ ratio: 0.4, visibleHeight: 40, rootHeight: 600 })).toBe(true);
+    expect(isSeen({ ratio: 0.39, visibleHeight: 39, rootHeight: 600 })).toBe(false);
+  });
+
+  it("message plus haut que la zone : vu s'il en occupe la moitié", () => {
+    // 2 000 px de haut dans une zone de 600 px : 30 % au mieux, mais toute la zone.
+    expect(isSeen({ ratio: 0.3, visibleHeight: 600, rootHeight: 600 })).toBe(true);
+    expect(isSeen({ ratio: 0.15, visibleHeight: 300, rootHeight: 600 })).toBe(true);
+    expect(isSeen({ ratio: 0.1, visibleHeight: 200, rootHeight: 600 })).toBe(false);
+  });
+
+  it("rien de visible ou zone inconnue", () => {
+    expect(isSeen({ ratio: 0, visibleHeight: 0, rootHeight: 600 })).toBe(false);
+    expect(isSeen({ ratio: 0.2, visibleHeight: 100, rootHeight: 0 })).toBe(false);
+  });
+});
+
+describe("hasSavedQuestion", () => {
+  it("retrouve la question envoyée parmi les nouveaux messages", () => {
+    const fresh = [msg(5, { role: "user", content: "Mes budgets ?" }), msg(6)];
+    expect(hasSavedQuestion(fresh, "  Mes budgets ?  ")).toBe(true);
+    expect(hasSavedQuestion(fresh, "Autre question")).toBe(false);
+  });
+
+  it("rechargement échoué ou question venue de Telegram : non retrouvée", () => {
+    expect(hasSavedQuestion(null, "Mes budgets ?")).toBe(false);
+    expect(hasSavedQuestion([msg(5, { role: "user", source: "telegram", content: "Mes budgets ?" })], "Mes budgets ?")).toBe(false);
   });
 });

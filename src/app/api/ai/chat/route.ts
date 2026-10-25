@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export const HEARTBEAT_MS = 15_000;
 
 /**
- * Nouveau message de l'utilisateur `{ content }` : enregistré dans le fil (source `app`), puis
+ * Nouveau message de l'utilisateur `{ content }` : enregistré dans le fil (source `app`) — ou
+ * `{ retry: true }` : relance sans nouvelle question (réponse aux questions en attente) —, puis
  * réponse de l'assistant en flux SSE : `data: {"type":"text"|"tool"|"saved"|"done"|"error",…}`
  * (`saved` porte l'id du message assistant enregistré, juste avant `done`).
  * Les erreurs de validation ou l'IA désactivée renvoient une réponse JSON avant le flux (rien
@@ -24,8 +25,9 @@ export const HEARTBEAT_MS = 15_000;
 export const POST = withAiErrors(async (req: Request) => {
   const db = getDb();
   const ai = requireAi(db);
-  const { content } = chatRequest.parse(await readJson(req));
-  addMessage(db, { role: "user", kind: "chat", content, source: "app" });
+  const request = chatRequest.parse(await readJson(req));
+  // `{ retry: true }` : aucune nouvelle question, réponse aux questions en attente (sinon `done`).
+  if ("content" in request) addMessage(db, { role: "user", kind: "chat", content: request.content, source: "app" });
 
   const upstream = new AbortController();
   const abort = () => upstream.abort();

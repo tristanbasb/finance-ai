@@ -93,12 +93,40 @@ export function fullDateTime(ts: number): string {
   return fullFormat.format(ts);
 }
 
-/** Union de deux listes de messages (la seconde l'emporte à id égal), triée par id croissant. */
-export function mergeMessages(current: readonly ThreadMessage[], incoming: readonly ThreadMessage[]): ThreadMessage[] {
+/**
+ * Union de deux listes de messages (la seconde l'emporte à id égal), triée par id croissant.
+ * Renvoie `current` lui-même quand rien ne change (mêmes ids, lecture et contenu) : le
+ * rechargement périodique du fil ne provoque alors aucun nouveau rendu.
+ */
+export function mergeMessages<T extends readonly ThreadMessage[]>(current: T, incoming: readonly ThreadMessage[]): T | ThreadMessage[] {
   const byId = new Map<number, ThreadMessage>();
   for (const m of current) byId.set(m.id, m);
-  for (const m of incoming) byId.set(m.id, m);
+  let changed = false;
+  for (const m of incoming) {
+    const prev = byId.get(m.id);
+    if (!prev || prev.readAt !== m.readAt || prev.content !== m.content) changed = true;
+    byId.set(m.id, prev && prev.readAt === m.readAt && prev.content === m.content ? prev : m);
+  }
+  if (!changed) return current;
   return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+
+/**
+ * Message « vu » dans la zone de défilement : visible à 40 % au moins, ou — message plus haut
+ * que la zone, qui ne peut jamais l'être à 40 % — occupant au moins la moitié de la zone.
+ */
+export function isSeen({
+  ratio,
+  visibleHeight,
+  rootHeight,
+}: {
+  ratio: number;
+  visibleHeight: number;
+  rootHeight: number;
+}): boolean {
+  if (visibleHeight <= 0) return false;
+  if (ratio >= 0.4) return true;
+  return rootHeight > 0 && visibleHeight >= 0.5 * rootHeight;
 }
 
 /** Messages de Claude non lus parmi `messages` (ids). */
@@ -119,4 +147,10 @@ export function takeNewUnread(latest: readonly ThreadMessage[], seen: Set<number
 /** Libellé de pastille : « 9+ » au-delà de 9. */
 export function badgeCount(count: number): string {
   return count > 9 ? "9+" : String(count);
+}
+
+/** Vrai si `fresh` (messages nouveaux du fil) contient la question `content` envoyée depuis l'app. */
+export function hasSavedQuestion(fresh: readonly ThreadMessage[] | null, content: string): boolean {
+  const text = content.trim();
+  return !!fresh?.some((m) => m.role === "user" && m.source === "app" && m.content === text);
 }

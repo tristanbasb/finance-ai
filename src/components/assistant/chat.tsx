@@ -6,7 +6,7 @@ import { Maximize2, SquarePen, X } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { excerpt, kindLabel, unreadAssistantIds, type ThreadMessage } from "@/lib/assistant-thread";
+import { excerpt, hasSavedQuestion, kindLabel, unreadAssistantIds, type ThreadMessage } from "@/lib/assistant-thread";
 import { errorMessage } from "@/lib/http";
 import { decodeSse } from "@/lib/sse";
 import { cn } from "@/lib/cn";
@@ -55,7 +55,7 @@ export function AssistantConversation({
   // Annonce (lecteurs d'écran) des nouveaux messages de Claude, une fois complets.
   const reloadTail = useCallback(async () => {
     const fresh = await refreshTail();
-    const last = [...fresh].reverse().find((m) => m.role === "assistant");
+    const last = [...(fresh ?? [])].reverse().find((m) => m.role === "assistant");
     if (last) setAnnouncement(`${kindLabel(last.kind)} : ${excerpt(last.content, 200)}`);
     return fresh;
   }, [refreshTail]);
@@ -125,12 +125,21 @@ export function AssistantConversation({
     [],
   );
 
-  const send = useCallback(
-    async (content: string) => {
+  /**
+   * Envoie une question (`content`) ou relance la réponse aux questions déjà enregistrées
+   * (`retry`, après une erreur survenue une fois la question enregistrée : rien n'est ajouté).
+   *
+   * La requête n'est volontairement pas annulée quand le panneau se ferme ou que la page change :
+   * le serveur interromprait la génération et enregistrerait une réponse « (interrompu) ». Elle
+   * se termine en arrière-plan ; la réponse arrive dans le fil (et en notification).
+   */
+  const run = useCallback(
+    async (request: { content: string } | { retry: true }, question: string) => {
       if (streamingRef.current) return;
       streamingRef.current = true;
+      const isRetry = "retry" in request;
       setFailure(null);
-      setPending({ content, failed: false });
+      setPending(isRetry ? null : { content: question, failed: false });
       setStream({ text: "", tool: null });
       setScrollSignal((n) => n + 1);
       setAnnouncement("Claude prépare sa réponse…");
@@ -138,13 +147,14 @@ export function AssistantConversation({
       const controller = new AbortController();
       abortRef.current = controller;
       let error: string | null = null;
-      let saved = false; // message utilisateur enregistré côté serveur
+      // Question enregistrée côté serveur : vrai, faux, ou inconnu (exception réseau).
+      let saved: boolean | null = isRetry;
       let stopped = false;
       try {
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify(request),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {
@@ -171,17 +181,18 @@ export function AssistantConversation({
       } catch {
         if (controller.signal.aborted) stopped = true;
         else error = "Connexion à l'assistant impossible. Réessayez.";
-        // Requête partie : le message a pu être enregistré ; le fil rechargé le dira.
-        saved = true;
+        // Requête partie : la question a pu être enregistrée ; le fil rechargé le dira.
+        if (!isRetry) saved = null;
       }
       if (abortRef.current === controller) abortRef.current = null;
 
       // Le fil fait foi : réponse enregistrée, réponse d'une génération concurrente, texte interrompu.
-      await reloadTail();
-      const kept = !saved;
+      const fresh = await reloadTail();
+      if (saved === null) saved = hasSavedQuestion(fresh, question);
       setStream(null);
-      setPending(kept ? { content, failed: true } : null);
-      setFailure(error ? { message: error, content, saved } : null);
+      // Question non enregistrée (ou introuvable) : gardée à l'écran, « Non envoyé ».
+      setPending(!isRetry && !saved ? { content: question, failed: true } : null);
+      setFailure(error ? { message: error, content: question, saved } : null);
       if (stopped) {
         setAnnouncement("Réponse interrompue.");
         // Le texte partiel est enregistré juste après l'interruption.
@@ -193,6 +204,8 @@ export function AssistantConversation({
     },
     [reloadTail],
   );
+
+  const send = useCallback((content: string) => run({ content }, content), [run]);
 
   function stop() {
     abortRef.current?.abort();
@@ -219,7 +232,14 @@ export function AssistantConversation({
   }
 
   const threadFailure: ThreadFailure | null = failure
-    ? { message: failure.message, onRetry: aiEnabled && !streaming ? () => void send(failure.content) : undefined }
+    ? {
+        message: failure.message,
+        // Question déjà enregistrée : relance sans la renvoyer (pas de doublon dans le fil).
+        onRetry:
+          aiEnabled && !streaming
+            ? () => void (failure.saved ? run({ retry: true }, failure.content) : send(failure.content))
+            : undefined,
+      }
     : null;
 
   const lastIsDivider = messages[messages.length - 1]?.role === "divider";

@@ -12,9 +12,15 @@ export { encodeSse, type ChatEvent };
 export const MAX_TOOL_ITERATIONS = 8;
 
 /** Corps de `POST /api/ai/chat` : le nouveau message de l'utilisateur. */
-export const chatRequest = z.object({
-  content: z.string().trim().min(1, "Le message est vide").max(8000),
-});
+/**
+ * Corps de `POST /api/ai/chat` : `{ content }` (nouvelle question, enregistrée avant la réponse)
+ * ou `{ retry: true }` (relance après une erreur : répond aux questions déjà enregistrées et
+ * restées sans réponse, sans rien ajouter au fil).
+ */
+export const chatRequest = z.union([
+  z.object({ content: z.string().trim().min(1, "Le message est vide").max(8000) }),
+  z.strictObject({ retry: z.literal(true) }),
+]);
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 

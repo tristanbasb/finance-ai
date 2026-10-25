@@ -7,6 +7,7 @@ import { Markdown } from "@/components/assistant/markdown";
 import {
   fullDateTime,
   isProactive,
+  isSeen,
   kindLabel,
   mergeMessages,
   relativeTime,
@@ -18,6 +19,8 @@ import { cn } from "@/lib/cn";
 export const PAGE_SIZE = 50;
 /** Pages plus anciennes chargées au plus pour retrouver un message demandé par `openAt`. */
 const MAX_FOCUS_PAGES = 5;
+/** 0 ; 0,01 ; … ; 1 : rappels de l'observateur assez fréquents pour `isSeen`. */
+const SEEN_THRESHOLDS = Array.from({ length: 101 }, (_, i) => i / 100);
 
 export const TOOL_LABELS: Record<string, string> = {
   get_overview: "Consultation de votre situation…",
@@ -55,8 +58,8 @@ export type ThreadState = {
   status: "loading" | "ready" | "error";
   hasMore: boolean;
   loadingOlder: boolean;
-  /** Recharge la fin du fil ; renvoie les messages nouveaux (absents avant). */
-  refreshTail: () => Promise<ThreadMessage[]>;
+  /** Recharge la fin du fil ; renvoie les messages nouveaux (absents avant), null en cas d'échec. */
+  refreshTail: () => Promise<ThreadMessage[] | null>;
   loadOlder: () => Promise<void>;
   /** Ajoute ou remplace des messages localement (séparateur créé, lecture). */
   upsert: (messages: ThreadMessage[]) => void;
@@ -90,7 +93,7 @@ export function useThread(): ThreadState {
       return fresh;
     } catch {
       if (!loaded.current) setStatus("error");
-      return [];
+      return null;
     }
   }, [apply]);
 
@@ -417,12 +420,22 @@ export function ThreadView({
       observer = new IntersectionObserver(
         (entries) => {
           const ids = entries
-            .filter((e) => e.isIntersecting)
+            .filter(
+              (e) =>
+                e.isIntersecting &&
+                isSeen({
+                  ratio: e.intersectionRatio,
+                  visibleHeight: e.intersectionRect.height,
+                  rootHeight: e.rootBounds?.height ?? root.clientHeight,
+                }),
+            )
             .map((e) => Number((e.target as HTMLElement).dataset.messageId))
             .filter((id) => Number.isInteger(id));
           if (ids.length && document.visibilityState === "visible") onSeenRef.current(ids);
         },
-        { root, threshold: 0.4 },
+        // Seuils fins : un message plus haut que la zone n'atteint jamais 40 % ; il est vu
+        // quand il en occupe la moitié (voir `isSeen`).
+        { root, threshold: SEEN_THRESHOLDS },
       );
       root.querySelectorAll('[data-unread="true"]').forEach((el) => observer?.observe(el));
     };

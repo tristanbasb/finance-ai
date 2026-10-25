@@ -425,6 +425,50 @@ describe("routes du fil", () => {
     ]);
   });
 
+  it("chat retry : aucune question enregistrée, la question en attente reçoit sa réponse", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const db = getDb();
+    const question = addMessage(db, { role: "user", kind: "chat", content: "Question restée sans réponse", source: "app" });
+    vi.spyOn(Anthropic.Messages.prototype, "stream").mockImplementation((() => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Réponse" } };
+      },
+      finalMessage: async () => ({ stop_reason: "end_turn", content: [] }),
+    })) as never);
+
+    const events = await readAll(await postChat({ retry: true }));
+    const thread = listMessages(db);
+    expect(thread.map((m) => [m.role, m.content])).toEqual([
+      ["user", "Question restée sans réponse"],
+      ["assistant", "Réponse"],
+    ]);
+    expect(thread[1].meta).toEqual({ replyTo: question.id });
+    expect(events).toEqual([
+      { type: "text", text: "Réponse" },
+      { type: "saved", id: thread[1].id },
+      { type: "done" },
+    ]);
+  });
+
+  it("chat retry : rien en attente → seulement done, sans appel au modèle", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const db = getDb();
+    const q = addMessage(db, { role: "user", kind: "chat", content: "Q", source: "app" });
+    addMessage(db, { role: "assistant", kind: "chat", content: "R", source: "app", meta: { replyTo: q.id } });
+    const stream = vi.spyOn(Anthropic.Messages.prototype, "stream");
+    const events = await readAll(await postChat({ retry: true }));
+    expect(events).toEqual([{ type: "done" }]);
+    expect(stream).not.toHaveBeenCalled();
+    expect(listMessages(db)).toHaveLength(2);
+  });
+
+  it("chat retry : 400 si retry n'est pas true", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    for (const body of [{ retry: false }, { retry: "oui" }, {}]) {
+      expect((await postChat(body)).status).toBe(400);
+    }
+  });
+
   it("chat : modèle introuvable → événement error français, réglage effacé", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     setModelSetting(getDb(), "claude-retired-1");
