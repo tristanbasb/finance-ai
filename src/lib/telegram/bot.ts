@@ -26,6 +26,8 @@ export const GENERIC_ERROR_MESSAGE = "Une erreur est survenue. Réessayez.";
 export const MAX_TEXT_LENGTH = 8000;
 export const TYPING_INTERVAL_MS = 4000;
 const PRIVATE_NOTICE_MS = 3600_000;
+/** Nombre maximal de chats inconnus mémorisés pour la limitation de « Ce bot est privé. ». */
+export const PRIVATE_NOTICE_CAP = 1000;
 const START_WINDOW_MS = 10 * 60_000;
 const START_MAX_FAILURES = 5;
 
@@ -128,8 +130,14 @@ async function handleStranger(ctx: BotContext, chatId: string, text: string | nu
   const notified = ctx.guard.privateNotified;
   const last = notified.get(chatId);
   if (last !== undefined && now - last < PRIVATE_NOTICE_MS) return;
-  if (notified.size > 1000) {
+  notified.delete(chatId);
+  if (notified.size >= PRIVATE_NOTICE_CAP) {
     for (const [id, at] of notified) if (now - at >= PRIVATE_NOTICE_MS) notified.delete(id);
+    // Toujours plein : on évince les plus anciens (ordre d'insertion de la Map).
+    for (const id of notified.keys()) {
+      if (notified.size < PRIVATE_NOTICE_CAP) break;
+      notified.delete(id);
+    }
   }
   notified.set(chatId, now);
   await ctx.api.sendMessage(chatId, escapeHtml(PRIVATE_MESSAGE));
@@ -178,11 +186,13 @@ async function converse(ctx: BotContext, chatId: string, content: string): Promi
       if (!info) console.error(`[telegram] erreur pendant la conversation : ${describe(err)}`);
       text = info?.message ?? GENERIC_ERROR_MESSAGE;
     }
-    await ctx.api.sendMessage(chatId, escapeHtml(text));
+    if (linkedChatId(ctx.db) === chatId) await ctx.api.sendMessage(chatId, escapeHtml(text));
     return;
   } finally {
     clearInterval(timer);
   }
+  // Chat délié ou remplacé pendant la génération : rien n'est envoyé (la réponse reste au fil).
+  if (linkedChatId(ctx.db) !== chatId) return;
   // La réponse n'est pas diffusée vers le canal d'origine : on l'envoie ici.
   if (reply) await sendMarkdown(ctx.api, chatId, reply.content);
 }

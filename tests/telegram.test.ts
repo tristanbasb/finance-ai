@@ -28,6 +28,7 @@ import {
   handleUpdate,
   NON_TEXT_MESSAGE,
   PRIVATE_MESSAGE,
+  PRIVATE_NOTICE_CAP,
   startBot,
   TELEGRAM_HINT,
   TOO_LONG_MESSAGE,
@@ -233,6 +234,33 @@ describe("handleUpdate", () => {
     expect(sent).toEqual([{ chatId: "999", text: PRIVATE_MESSAGE, plain: false }]);
     expect(listMessages(db)).toHaveLength(0);
     expect(respondMock).not.toHaveBeenCalled();
+  });
+
+  it("mémoire des chats inconnus plafonnée (les plus anciens évincés)", async () => {
+    const { db, ctx, sent } = setup();
+    linkChat(db, String(CHAT));
+    const now = Date.now();
+    for (let i = 0; i < PRIVATE_NOTICE_CAP; i++) ctx.guard.privateNotified.set(`old-${i}`, now);
+    await handleUpdate(ctx, textUpdate(777, "salut"));
+    expect(ctx.guard.privateNotified.size).toBeLessThanOrEqual(PRIVATE_NOTICE_CAP);
+    expect(ctx.guard.privateNotified.has("old-0")).toBe(false);
+    expect(ctx.guard.privateNotified.has("777")).toBe(true);
+    expect(sent.map((s) => s.chatId)).toEqual(["777"]);
+  });
+
+  it("chat délié pendant la génération → rien envoyé à l'ancien chat", async () => {
+    for (const fail of [false, true]) {
+      const { db, ctx, sent } = setup({
+        respond: (async (d: TestDb) => {
+          unlinkTelegram(d);
+          if (fail) throw new ModelUnavailableError();
+          return addMessage(d, { role: "assistant", kind: "chat", content: "secret", source: "telegram" });
+        }) as unknown as BotContext["respond"],
+      });
+      linkChat(db, String(CHAT));
+      await handleUpdate(ctx, textUpdate(CHAT, "salut"));
+      expect(sent).toHaveLength(0);
+    }
   });
 
   it("groupes, messages modifiés et canaux ignorés", async () => {
