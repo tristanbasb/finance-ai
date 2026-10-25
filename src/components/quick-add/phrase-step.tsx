@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { KindToggle, type AccountOption, type CategoryOption } from "@/components/transactions/transaction-fields";
 import { cn } from "@/lib/cn";
+import { NARROW_NBSP } from "@/lib/format";
 import { MAX_LABEL_LENGTH, withKind, type TransactionFormErrors, type TransactionFormValues } from "@/lib/quick-add";
 
 export const MAX_PHRASE_LENGTH = 500;
@@ -218,7 +219,8 @@ export function ProposalCard({
         <p className="flex items-start gap-2 text-[13px] text-muted">
           <Sparkles aria-hidden className="mt-0.5 size-4 shrink-0 text-brand" />
           <span>
-            Proposition pour <q className="font-medium text-fg">{phrase}</q>. Vérifiez, puis ajoutez.
+            Proposition pour <span className="font-medium text-fg">{`«${NARROW_NBSP}${phrase}${NARROW_NBSP}»`}</span>. Vérifiez,
+            puis ajoutez.
           </span>
         </p>
       )}

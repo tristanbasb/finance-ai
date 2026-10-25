@@ -164,7 +164,7 @@ export function TransactionList({
             return (
               <section key={g.date} aria-label={formatDateLong(g.date)}>
                 <div className="sticky top-[var(--mobile-header-h)] z-10 -mx-4 flex items-baseline justify-between gap-3 bg-bg/90 px-5 py-2 backdrop-blur-md sm:-mx-6 sm:px-7 md:top-16 md:mx-0 md:rounded-xl md:px-3">
-                  <h3 className="text-[13px] font-bold text-fg first-letter:uppercase">{formatDateLong(g.date)}</h3>
+                  <h2 className="text-[13px] font-bold text-fg first-letter:uppercase">{formatDateLong(g.date)}</h2>
                   <Amount cents={dayTotal} tone="signed" className="text-[12px] font-medium text-muted" />
                 </div>
                 <Card className="p-1.5">

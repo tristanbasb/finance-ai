@@ -89,15 +89,15 @@ export function SearchField({ currentMonth, className, ...state }: FilterState &
         maxLength={200}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className={`${controlClasses} rounded-full [&::-webkit-search-cancel-button]:hidden`}
-        style={{ paddingLeft: 38, paddingRight: search ? 40 : undefined }}
+        className={`${controlClasses} rounded-full [&::-webkit-search-cancel-button]:hidden ${search ? "pr-10 pointer-coarse:pr-12" : ""}`}
+        style={{ paddingLeft: 38 }}
       />
       {search && (
         <button
           type="button"
           aria-label="Effacer la recherche"
           onClick={() => setSearch("")}
-          className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-subtle hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
+          className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 pointer-coarse:right-0 pointer-coarse:size-11 items-center justify-center rounded-full text-subtle hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
         >
           <X aria-hidden className="size-4" />
         </button>

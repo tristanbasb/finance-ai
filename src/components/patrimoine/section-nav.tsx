@@ -44,7 +44,7 @@ export function SectionNav({ initialSection }: { initialSection: PatrimoineSecti
       {PATRIMOINE_SECTIONS.map((s) => (
         <Chip
           key={s.id}
-          selected={active === s.id}
+          current={active === s.id}
           onClick={() => {
             const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
             scrollToSection(s.id, reduce ? "auto" : "smooth");

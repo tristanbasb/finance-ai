@@ -43,7 +43,7 @@ export default function SettingsPage() {
     <div className="space-y-5 sm:space-y-6">
       <header className="space-y-1">
         <p className="text-[13px] text-muted">Comptes, catégories et configuration</p>
-        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Réglages</h1>
+        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg max-md:sr-only md:text-[28px]">Réglages</h1>
       </header>
 
       <SettingsNav />

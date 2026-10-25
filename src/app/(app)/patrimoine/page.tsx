@@ -76,7 +76,7 @@ export default async function PatrimoinePage({ searchParams }: { searchParams: P
     <div className="space-y-6 sm:space-y-8">
       <header className="space-y-1">
         <p className="text-[13px] text-muted">Comptes, objectifs et placements</p>
-        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Patrimoine</h1>
+        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg max-md:sr-only md:text-[28px]">Patrimoine</h1>
       </header>
 
       <PatrimoineHero

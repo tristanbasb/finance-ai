@@ -69,7 +69,7 @@ export default async function BudgetsPage({
       <header className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <p className="text-[13px] text-muted">Plafonds mensuels par catégorie</p>
-          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">Budgets</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg max-md:sr-only md:text-[28px]">Budgets</h1>
         </div>
         <BudgetMonthNav month={month} currentMonth={currentMonth} />
       </header>

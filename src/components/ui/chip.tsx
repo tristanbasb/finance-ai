@@ -7,8 +7,14 @@ import { tintStyle } from "@/lib/category-tint";
 export type ChipTint = { bg: string; fg: string };
 
 type ChipOwnProps = {
-  /** État sélectionné (filtre actif) : dégradé de marque, ou anneau si la pastille est teintée. */
+  /**
+   * État sélectionné (filtre actif) : dégradé de marque, ou anneau si la pastille est teintée.
+   * Sur un bouton, le fournir en fait une bascule (`aria-pressed`) ; l'omettre laisse un bouton
+   * simple (ex. phrase d'exemple).
+   */
   selected?: boolean;
+  /** Navigation par rubrique : rubrique en cours (`aria-current`, même rendu que `selected`). */
+  current?: boolean;
   /** Teinte explicite (ex. `categoryTint(color, scheme)`). */
   tint?: ChipTint;
   /** Couleur de catégorie (#rrggbb) : teinte pastel calculée pour le clair et le sombre. */
@@ -48,7 +54,8 @@ export function chipClasses({
 
 /** Pastille de filtre ou de catégorie : bouton (`onClick`) ou lien (`href`). */
 export function Chip(props: ChipProps) {
-  const { selected = false, tint, tintColor, icon: Icon, children, className } = props;
+  const { tint, tintColor, icon: Icon, children, className } = props;
+  const selected = props.selected ?? props.current ?? false;
   const tinted = Boolean(tint || tintColor);
   const style: CSSProperties | undefined = tint
     ? ({
@@ -77,10 +84,12 @@ export function Chip(props: ChipProps) {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { selected: _s, tint: _t, tintColor: _c, icon: _i, children: _ch, className: _cl, href: _h, type = "button", ...rest } =
+  const { selected: _s, current, tint: _t, tintColor: _c, icon: _i, children: _ch, className: _cl, href: _h, type = "button", ...rest } =
     props;
+  const state =
+    current !== undefined ? { "aria-current": current ? ("true" as const) : undefined } : { "aria-pressed": props.selected };
   return (
-    <button type={type} aria-pressed={selected} className={classes} style={style} {...rest}>
+    <button type={type} {...state} className={classes} style={style} {...rest}>
       {content}
     </button>
   );

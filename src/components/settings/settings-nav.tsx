@@ -52,7 +52,7 @@ export function SettingsNav() {
         <Chip
           key={s.id}
           data-section={s.id}
-          selected={active === s.id}
+          current={active === s.id}
           onClick={() => {
             const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
             document.getElementById(s.id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });

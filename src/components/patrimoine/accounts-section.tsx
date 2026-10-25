@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Landmark, Plus } from "lucide-react";
+import { Landmark, Plus, Settings2 } from "lucide-react";
 import { Amount } from "@/components/amount";
 import { categoryIconComponent } from "@/components/category-icon";
 import { buttonClasses } from "@/components/ui/button";
@@ -41,7 +41,7 @@ export function AccountsSection({ accounts }: { accounts: PatrimoineAccount[] })
           Comptes
         </h2>
         <Link href="/settings#comptes" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-          <Plus aria-hidden />
+          <Settings2 aria-hidden />
           Gérer les comptes
         </Link>
       </div>
@@ -70,23 +70,23 @@ export function AccountsSection({ accounts }: { accounts: PatrimoineAccount[] })
                   {list.map((a) => {
                     const Icon = categoryIconComponent(TYPE_ICONS[a.type]);
                     return (
-                    <li key={a.id}>
-                      <div
-                        style={tintStyle(a.color)}
-                        className="tint flex h-full flex-col gap-4 rounded-card border border-(--tint-ring) p-4 sm:p-5"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-surface/70">
-                            <Icon className="size-5" strokeWidth={2} />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold">{a.name}</p>
-                            <p className="text-[12px] font-medium">{ACCOUNT_TYPE_LABELS[a.type]}</p>
+                      <li key={a.id}>
+                        <div
+                          style={tintStyle(a.color)}
+                          className="tint flex h-full flex-col gap-4 rounded-card border border-(--tint-ring) p-4 sm:p-5"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-surface/70">
+                              <Icon className="size-5" strokeWidth={2} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold">{a.name}</p>
+                              <p className="text-[12px] font-medium">{ACCOUNT_TYPE_LABELS[a.type]}</p>
+                            </div>
                           </div>
+                          <Amount cents={a.total} className="text-2xl font-semibold tracking-[-0.025em]" />
                         </div>
-                        <Amount cents={a.total} className="text-2xl font-semibold tracking-[-0.025em]" />
-                      </div>
-                    </li>
+                      </li>
                     );
                   })}
                 </ul>
