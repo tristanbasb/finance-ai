@@ -9,7 +9,7 @@ import { TransactionList } from "@/components/transactions/transaction-list";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "Transactions" };
+export const metadata: Metadata = { title: "Activité" };
 
 const READ_LIMIT = 2000;
 

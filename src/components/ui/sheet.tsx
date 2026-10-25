@@ -4,7 +4,10 @@ import { useEffect, useId, type RefObject } from "react";
 import { cn } from "@/lib/cn";
 import { DialogCloseButton, modalHandlers, useModalDialog, type DialogProps } from "./dialog";
 
-export type SheetProps = DialogProps;
+export type SheetProps = DialogProps & {
+  /** Téléphone : la feuille occupe presque toute la hauteur (assistants à plusieurs étapes). */
+  full?: boolean;
+};
 
 const widths = { sm: "md:max-w-sm", md: "md:max-w-lg", lg: "md:max-w-2xl" } as const;
 
@@ -54,6 +57,7 @@ export function Sheet({
   children,
   footer,
   size = "md",
+  full = false,
   className,
 }: SheetProps) {
   const ref = useModalDialog(open);
@@ -80,7 +84,12 @@ export function Sheet({
         className,
       )}
     >
-      <div className="relative flex max-h-[calc(var(--sheet-vh,100dvh)*0.9)] flex-col md:max-h-[85dvh]">
+      <div
+        className={cn(
+          "relative flex max-h-[calc(var(--sheet-vh,100dvh)*0.9)] flex-col md:max-h-[85dvh]",
+          full && "max-md:h-[calc(var(--sheet-vh,100dvh)*0.94)] max-md:max-h-none",
+        )}
+      >
         {/* Poignée purement décorative. */}
         <div aria-hidden className="flex justify-center pt-2.5 md:hidden">
           <span className="h-1.5 w-10 rounded-full bg-border-strong" />

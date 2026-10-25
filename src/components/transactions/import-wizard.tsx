@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { CircleAlert, Sparkles, Upload } from "lucide-react";
+import { Check, CircleAlert, FileUp, Sparkles } from "lucide-react";
 import { Amount } from "@/components/amount";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { CategoryIcon } from "@/components/category-icon";
+import { Sheet } from "@/components/ui/sheet";
 import { Select } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import {
@@ -15,6 +16,7 @@ import {
   parseCsv,
   type CsvMapping,
 } from "@/lib/csv";
+import { cn } from "@/lib/cn";
 import { formatDateShort } from "@/lib/format";
 import { importInBatches } from "@/lib/import-batches";
 import type { AccountOption, CategoryOption } from "./transaction-dialog";
@@ -28,8 +30,38 @@ type Cols = { date: string; label: string; amount: string; debit: string; credit
 type AmountMode = "single" | "split";
 type Parsed = { fileName: string; headers: string[]; rows: string[][]; lines: number[] };
 
+const STEPS = ["Fichier", "Colonnes", "Aperçu"] as const;
+
+/** Indicateur d'étapes : l'étape en cours est mise en avant, les précédentes sont validées. */
+function Stepper({ current }: { current: number }) {
+  return (
+    <ol aria-label="Étapes de l'import" className="flex items-center gap-2">
+      {STEPS.map((label, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <li key={label} aria-current={active ? "step" : undefined} className="flex items-center gap-2">
+            {i > 0 && <span aria-hidden className={cn("h-px w-5 sm:w-8", done || active ? "bg-brand" : "bg-border-strong")} />}
+            <span
+              className={cn(
+                "inline-flex size-6 items-center justify-center rounded-full text-[12px] font-bold",
+                done && "bg-brand text-white",
+                active && "bg-brand-soft text-brand ring-2 ring-brand",
+                !done && !active && "bg-surface-2 text-muted",
+              )}
+            >
+              {done ? <Check aria-hidden className="size-3.5" /> : i + 1}
+            </span>
+            <span className={cn("text-[13px] font-semibold", active ? "text-fg" : "text-muted")}>{label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 const rowSelectClasses =
-  "h-8 w-full max-w-64 cursor-pointer rounded-md border border-border bg-surface px-2 text-[13px] text-fg " +
+  "h-9 pointer-coarse:h-11 w-full min-w-0 cursor-pointer rounded-lg border border-border bg-surface px-2 text-[13px] text-fg " +
   "hover:border-border-strong focus-visible:border-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-accent/20";
 
 async function errorMessage(res: Response): Promise<string> {
@@ -275,11 +307,14 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
     </Button>
   );
 
+  const step = !parsed ? 0 : !result ? 1 : 2;
+
   return (
-    <Dialog
+    <Sheet
       open={open}
       onClose={busy ? () => undefined : onClose}
       size="lg"
+      full
       title="Importer un relevé"
       description={
         parsed
@@ -288,11 +323,14 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
       }
       footer={footer}
     >
+      <div className="mb-5">
+        <Stepper current={step} />
+      </div>
       {!parsed ? (
         <div className="space-y-3">
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-6 py-10 text-center transition-colors hover:bg-surface-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring">
-            <span className="inline-flex size-10 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Upload aria-hidden className="size-5" />
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-brand/40 bg-brand-soft/60 px-6 py-10 text-center transition-colors hover:bg-brand-soft has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring">
+            <span className="inline-flex size-12 items-center justify-center rounded-full bg-brand-gradient text-white shadow-glow">
+              <FileUp aria-hidden className="size-5" />
             </span>
             <span className="text-sm font-medium text-fg">Choisir un fichier CSV</span>
             <span className="text-[13px] text-muted">UTF-8 ou Latin-1, 10 Mo au maximum</span>
@@ -326,8 +364,8 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
             </p>
           )}
           <section aria-labelledby="import-cols" className="space-y-3">
-            <h3 id="import-cols" className="text-[13px] font-semibold text-fg">
-              1. Colonnes
+            <h3 id="import-cols" className="text-[15px] font-bold text-fg">
+              Colonnes
             </h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Select
@@ -393,8 +431,8 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
           </section>
 
           <section aria-labelledby="import-preview" className="space-y-3">
-            <h3 id="import-preview" className="text-[13px] font-semibold text-fg">
-              2. Aperçu
+            <h3 id="import-preview" className="text-[15px] font-bold text-fg">
+              Aperçu
             </h3>
             {!result ? (
               <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-[13px] text-muted">
@@ -430,18 +468,24 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
                 {valid.length > 0 && (
                   <ul
                     aria-label="Aperçu des premières lignes"
-                    className="divide-y divide-border rounded-lg border border-border"
+                    className="divide-y divide-border overflow-hidden rounded-card border border-border bg-surface"
                   >
                     {valid.slice(0, PREVIEW_ROWS).map((t, index) => (
-                      <li key={index} className="space-y-1.5 px-3 py-2.5">
+                      <li key={index} className="space-y-1.5 px-3 py-3">
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="min-w-0 truncate text-[13px] font-medium text-fg" title={t.label}>
                             {t.label}
                           </span>
                           <Amount cents={t.amount} tone="signed" className="shrink-0 text-[13px] font-medium" />
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
                           <span className="num w-12 shrink-0 text-[12px] text-muted">{formatDateShort(t.date)}</span>
+                          <CategoryIcon
+                            icon={categories.find((c) => c.id === cats[index])?.icon}
+                            color={categories.find((c) => c.id === cats[index])?.color}
+                            size="sm"
+                            tinted
+                          />
                           <select
                             aria-label={`Catégorie de « ${t.label} »`}
                             className={rowSelectClasses}
@@ -478,8 +522,8 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
           </section>
 
           <section aria-labelledby="import-target" className="space-y-3">
-            <h3 id="import-target" className="text-[13px] font-semibold text-fg">
-              3. Compte de destination
+            <h3 id="import-target" className="text-[15px] font-bold text-fg">
+              Compte de destination
             </h3>
             <Select
               aria-label="Compte de destination"
@@ -507,6 +551,6 @@ export function ImportWizard({ open, onClose, accounts, categories, defaultAccou
           </section>
         </div>
       )}
-    </Dialog>
+    </Sheet>
   );
 }

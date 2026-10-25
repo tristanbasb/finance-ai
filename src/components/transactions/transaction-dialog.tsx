@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog } from "@/components/ui/dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/http";
@@ -31,7 +31,7 @@ export type TransactionDialogProps = {
 };
 
 /**
- * Dialogue d'ajout / modification. Le contenu garde son état tant que le composant reste monté :
+ * Feuille d'ajout / modification. Le contenu garde son état tant que le composant reste monté :
  * le parent change la `key` à chaque ouverture pour repartir d'un formulaire neuf.
  */
 export function TransactionDialog({
@@ -81,7 +81,8 @@ export function TransactionDialog({
   // on place donc le focus sur le montant une fois le dialogue ouvert.
   const amountRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (open) amountRef.current?.focus();
+    // Sur écran tactile, on ne déclenche pas le clavier à chaque ouverture de la feuille.
+    if (open && window.matchMedia("(pointer: fine)").matches) amountRef.current?.focus();
   }, [open]);
 
   async function submit(e: FormEvent) {
@@ -144,7 +145,7 @@ export function TransactionDialog({
 
   const footer = confirmDelete ? (
     <>
-      <p className="mr-auto self-center text-[13px] text-muted">Supprimer définitivement cette transaction ?</p>
+      <p className="mr-auto self-center text-[13px] text-muted max-md:order-last max-md:mr-0 max-md:text-center">Supprimer définitivement cette transaction ?</p>
       <Button variant="secondary" onClick={() => setConfirmDelete(false)} disabled={busy}>
         Annuler
       </Button>
@@ -157,7 +158,7 @@ export function TransactionDialog({
       {editing && (
         <Button
           variant="ghost"
-          className="text-danger! hover:text-danger! sm:mr-auto"
+          className="text-danger! hover:text-danger! md:mr-auto"
           onClick={() => setConfirmDelete(true)}
           disabled={busy}
         >
@@ -174,7 +175,7 @@ export function TransactionDialog({
   );
 
   return (
-    <Dialog
+    <Sheet
       open={open}
       onClose={onClose}
       title={editing ? "Modifier la transaction" : "Nouvelle transaction"}
@@ -190,6 +191,6 @@ export function TransactionDialog({
           amountRef={amountRef}
         />
       </form>
-    </Dialog>
+    </Sheet>
   );
 }

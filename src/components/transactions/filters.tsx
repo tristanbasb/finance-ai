@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Landmark, RotateCcw, Search, X } from "lucide-react";
+import { categoryIconComponent } from "@/components/category-icon";
 import { buttonClasses } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
+import { Chip } from "@/components/ui/chip";
 import { controlClasses } from "@/components/ui/field";
+import { cn } from "@/lib/cn";
 import { formatMonth } from "@/lib/format";
 import type { AccountOption, CategoryOption } from "./transaction-dialog";
 
@@ -44,15 +46,16 @@ export type FiltersProps = FilterState & {
 
 const SEARCH_DELAY_MS = 300;
 
-/** Mois, compte, catégorie et recherche, tous reflétés dans l'adresse de la page. */
-export function Filters({ currentMonth, accounts, categories, ...state }: FiltersProps) {
+/**
+ * Champ de recherche de l'en-tête : la saisie est répercutée (avec délai) dans l'adresse de la page.
+ * Un changement venu d'ailleurs (retour arrière, réinitialisation) remet le champ à jour.
+ */
+export function SearchField({ currentMonth, className, ...state }: FilterState & { currentMonth: string; className?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const href = (patch: Partial<FilterState>) => filtersHref(pathname, { ...state, ...patch }, currentMonth);
-
   const [search, setSearch] = useState(state.q);
   // Dernière valeur écrite dans l'adresse par la saisie : permet de distinguer une saisie en cours
-  // d'un changement venu d'ailleurs (retour arrière du navigateur, réinitialisation).
+  // d'un changement venu d'ailleurs.
   const pushedQ = useRef(state.q);
 
   useEffect(() => {
@@ -75,8 +78,42 @@ export function Filters({ currentMonth, accounts, categories, ...state }: Filter
     return () => clearTimeout(timer);
   }, [search, month, accountId, categoryId, pathname, currentMonth, router]);
 
-  const filtered =
-    state.accountId !== null || state.categoryId !== null || state.q.trim() !== "" || search.trim() !== "";
+  return (
+    <div className={cn("relative", className)}>
+      <Search aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+      <input
+        type="search"
+        aria-label="Rechercher dans les libellés"
+        placeholder="Rechercher un libellé"
+        autoComplete="off"
+        maxLength={200}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={`${controlClasses} rounded-full [&::-webkit-search-cancel-button]:hidden`}
+        style={{ paddingLeft: 38, paddingRight: search ? 40 : undefined }}
+      />
+      {search && (
+        <button
+          type="button"
+          aria-label="Effacer la recherche"
+          onClick={() => setSearch("")}
+          className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-subtle hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          <X aria-hidden className="size-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+const scrollRow =
+  "-mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none] sm:-mx-6 sm:px-6 md:mx-0 md:my-0 md:flex-wrap md:overflow-visible md:px-0 md:py-1 [&::-webkit-scrollbar]:hidden";
+
+/** Mois, compte et catégorie sous forme de pastilles, tous reflétés dans l'adresse de la page. */
+export function Filters({ currentMonth, accounts, categories, ...state }: FiltersProps) {
+  const pathname = usePathname();
+  const href = (patch: Partial<FilterState>) => filtersHref(pathname, { ...state, ...patch }, currentMonth);
+  const filtered = state.accountId !== null || state.categoryId !== null || state.q.trim() !== "";
 
   return (
     <div className="space-y-3">
@@ -92,7 +129,7 @@ export function Filters({ currentMonth, accounts, categories, ...state }: Filter
           </Link>
           <h2
             aria-live="polite"
-            className="min-w-36 px-2 text-center text-[15px] font-semibold tracking-[-0.01em] text-fg first-letter:uppercase"
+            className="min-w-36 px-2 text-center text-[15px] font-bold tracking-[-0.01em] text-fg first-letter:uppercase"
           >
             {formatMonth(state.month)}
           </h2>
@@ -106,83 +143,46 @@ export function Filters({ currentMonth, accounts, categories, ...state }: Filter
           </Link>
         </nav>
         {state.month !== currentMonth && (
-          <Link
-            href={href({ month: currentMonth })}
-            className={buttonClasses({ variant: "ghost", size: "sm" })}
-            scroll={false}
-          >
+          <Link href={href({ month: currentMonth })} className={buttonClasses({ variant: "ghost", size: "sm" })} scroll={false}>
             Mois en cours
           </Link>
         )}
         {filtered && (
-          <button
-            type="button"
-            onClick={() => {
-              pushedQ.current = "";
-              setSearch("");
-              router.push(filtersHref(pathname, { month: state.month, accountId: null, categoryId: null, q: "" }, currentMonth), {
-                scroll: false,
-              });
-            }}
-            className="ml-auto text-[13px] font-medium text-accent hover:underline"
+          <Link
+            href={href({ accountId: null, categoryId: null, q: "" })}
+            className={cn(buttonClasses({ variant: "ghost", size: "sm" }), "ml-auto")}
+            scroll={false}
           >
+            <RotateCcw aria-hidden />
             Réinitialiser les filtres
-          </button>
+          </Link>
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr]">
-        <Select
-          aria-label="Filtrer par compte"
-          value={state.accountId === null ? "" : String(state.accountId)}
-          onChange={(e) =>
-            router.push(href({ accountId: e.target.value === "" ? null : Number(e.target.value) }), {
-              scroll: false,
-            })
-          }
-          options={accounts.map((a) => ({ value: a.id, label: a.archived ? `${a.name} (archivé)` : a.name }))}
-          placeholder="Tous les comptes"
-        />
-        <Select
-          aria-label="Filtrer par catégorie"
-          value={state.categoryId === null ? "" : String(state.categoryId)}
-          onChange={(e) =>
-            router.push(href({ categoryId: e.target.value === "" ? null : Number(e.target.value) }), {
-              scroll: false,
-            })
-          }
-          options={categories.map((c) => ({ value: c.id, label: c.name }))}
-          placeholder="Toutes les catégories"
-        />
-        <div className="relative sm:col-span-2 lg:col-span-1">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle"
-          />
-          <input
-            type="search"
-            aria-label="Rechercher dans les libellés"
-            placeholder="Rechercher un libellé"
-            autoComplete="off"
-            maxLength={200}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={`${controlClasses} [&::-webkit-search-cancel-button]:hidden`}
-            style={{ paddingLeft: 36, paddingRight: search ? 36 : undefined }}
-          />
-          {search && (
-            <button
-              type="button"
-              aria-label="Effacer la recherche"
-              onClick={() => setSearch("")}
-              className="absolute right-1.5 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-subtle hover:bg-surface-2 hover:text-fg"
-            >
-              <X aria-hidden className="size-4" />
-            </button>
-          )}
-        </div>
-      </div>
+      <nav aria-label="Filtrer par compte" className={scrollRow}>
+        <Chip href={href({ accountId: null })} selected={state.accountId === null} icon={Landmark}>
+          Tous les comptes
+        </Chip>
+        {accounts.map((a) => (
+          <Chip key={a.id} href={href({ accountId: state.accountId === a.id ? null : a.id })} selected={state.accountId === a.id}>
+            {a.archived ? `${a.name} (archivé)` : a.name}
+          </Chip>
+        ))}
+      </nav>
 
+      <nav aria-label="Filtrer par catégorie" className={scrollRow}>
+        {categories.map((c) => (
+          <Chip
+            key={c.id}
+            href={href({ categoryId: state.categoryId === c.id ? null : c.id })}
+            selected={state.categoryId === c.id}
+            tintColor={c.color}
+            icon={categoryIconComponent(c.icon)}
+          >
+            {c.name}
+          </Chip>
+        ))}
+      </nav>
     </div>
   );
 }
