@@ -8,6 +8,8 @@
  */
 
 :root {
+  /* Hauteur de l'en-tête mobile (56 px + filet + encoche) : décalage des éléments collants. */
+  --mobile-header-h: calc(3.5rem + 1px + env(safe-area-inset-top));
   color-scheme: light;
   /* Surfaces : blanc lumineux sur un fond très clair. */
   --bg: #f8fafc;

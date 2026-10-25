@@ -77,12 +77,12 @@ export function TransactionDialog({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // `autoFocus` de React appelle focus() avant showModal(), qui redonne alors le focus au 1er champ :
-  // on place donc le focus sur le montant une fois le dialogue ouvert.
+  // Au montage de la feuille, `autoFocus` serait annulé par `showModal()`, qui redonne le focus au
+  // 1er champ : on place donc le focus sur le montant une fois la feuille ouverte, mais seulement
+  // au pointeur fin (pas de clavier virtuel qui surgit à chaque ouverture sur téléphone).
   const amountRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    // Sur écran tactile, on ne déclenche pas le clavier à chaque ouverture de la feuille.
-    if (open && window.matchMedia("(pointer: fine)").matches) amountRef.current?.focus();
+    if (open && window.matchMedia?.("(pointer: fine)").matches) amountRef.current?.focus();
   }, [open]);
 
   async function submit(e: FormEvent) {
