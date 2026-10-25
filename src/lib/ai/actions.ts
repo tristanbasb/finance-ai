@@ -181,18 +181,19 @@ export function actionStatus(db: Db, id: number, now = Date.now()): ActionStatus
 }
 
 /**
- * Id de l'action la plus récente encore annulable (moins de 24 h, non annulée, données
- * inchangées depuis), ou null. Utilisé par `/annuler` sur Telegram.
+ * Id de l'action la plus récente non annulée et de moins de 24 h, ou null. Elle peut être
+ * bloquée (modifiée depuis) : `/annuler` le dit au lieu de remonter à une action plus ancienne.
  */
-export function lastUndoableActionId(db: Db, now = Date.now()): number | null {
-  const rows = db
-    .select({ id: aiActions.id })
-    .from(aiActions)
-    .where(and(isNull(aiActions.undoneAt), gte(aiActions.createdAt, now - DAY_MS)))
-    .orderBy(desc(aiActions.id))
-    .all();
-  for (const { id } of rows) if (actionStatus(db, id, now).undoable) return id;
-  return null;
+export function lastRecentActionId(db: Db, now = Date.now()): number | null {
+  return (
+    db
+      .select({ id: aiActions.id })
+      .from(aiActions)
+      .where(and(isNull(aiActions.undoneAt), gte(aiActions.createdAt, now - DAY_MS)))
+      .orderBy(desc(aiActions.id))
+      .limit(1)
+      .get()?.id ?? null
+  );
 }
 
 export function undoAction(db: Db, id: number, now = Date.now()): { ok: true; summary: string } | { ok: false; reason: string } {

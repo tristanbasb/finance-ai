@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   actionStatus,
   attachActionsToMessage,
-  lastUndoableActionId,
+  lastRecentActionId,
   recordAction,
   undoAction,
   type Change,
@@ -249,28 +249,32 @@ describe("undoAction", () => {
   });
 });
 
-describe("lastUndoableActionId", () => {
+describe("lastRecentActionId", () => {
   const created = (label: string) => {
     const tx = addTx(label);
     return recordAction(db, { tool: "add", summary: label, changes: [{ table: "transactions", id: tx.id, before: null, after: tx }] });
   };
 
   it("aucune action → null", () => {
-    expect(lastUndoableActionId(db, Date.now())).toBeNull();
+    expect(lastRecentActionId(db, Date.now())).toBeNull();
   });
 
-  it("renvoie la plus récente encore annulable, en sautant les annulées, modifiées ou trop anciennes", () => {
+  it("renvoie la plus récente non annulée de moins de 24 h, même modifiée depuis (pas de recul)", () => {
     const old = created("Ancienne");
     const first = created("Première");
-    const undone = created("Annulée");
     const modified = created("Modifiée");
+    const undone = created("Annulée");
     const now = Date.now();
     db.update(aiActions).set({ createdAt: now - 25 * 3600_000 }).where(eq(aiActions.id, old)).run();
     expect(undoAction(db, undone, now).ok).toBe(true);
     const tx = JSON.parse(db.select().from(aiActions).where(eq(aiActions.id, modified)).get()!.changes)[0].id as number;
     db.update(transactions).set({ label: "Manuel" }).where(eq(transactions.id, tx)).run();
-    expect(lastUndoableActionId(db, now)).toBe(first);
+    // L'action modifiée depuis reste la dernière : on ne recule pas vers « Première ».
+    expect(lastRecentActionId(db, now)).toBe(modified);
+    db.update(transactions).set({ label: "Modifiée" }).where(eq(transactions.id, tx)).run();
+    expect(undoAction(db, modified, now).ok).toBe(true);
+    expect(lastRecentActionId(db, now)).toBe(first);
     expect(undoAction(db, first, now).ok).toBe(true);
-    expect(lastUndoableActionId(db, now)).toBeNull();
+    expect(lastRecentActionId(db, now)).toBeNull();
   });
 });

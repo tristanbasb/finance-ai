@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { createDb, getDb } from "@/lib/db";
@@ -34,6 +35,7 @@ import {
   AI_DISABLED_TELEGRAM_MESSAGE,
   BILAN_PROMPT,
   createBotContext,
+  GENERIC_ERROR_MESSAGE,
   handleUpdate,
   NON_TEXT_MESSAGE,
   NOTHING_TO_UNDO_MESSAGE,
@@ -781,6 +783,16 @@ describe("annulation depuis Telegram", () => {
     expect(listMessages(db).filter((m) => m.source === "system")).toHaveLength(1);
   });
 
+  it("message sans clavier (inaccessible, > 48 h) → clavier non modifié", async () => {
+    const { db, ctx, sent, api } = setup();
+    linkChat(db, String(CHAT));
+    const id = addAction(db);
+    await handleUpdate(ctx, callbackUpdate(`undo:${id}`));
+    expect(actionStatus(db, id).undoneAt).not.toBeNull();
+    expect(sent.map((s) => s.text)).toEqual([`${UNDONE_PREFIX}Opération « Pain » ajoutée`]);
+    expect(api.editMessageReplyMarkup).not.toHaveBeenCalled();
+  });
+
   it("données inconnues ou mal formées → répondu sans action", async () => {
     const { db, ctx, sent, api } = setup();
     linkChat(db, String(CHAT));
@@ -826,6 +838,34 @@ describe("annulation depuis Telegram", () => {
     expect(actionStatus(db, first).undoneAt).not.toBeNull();
     await handleUpdate(ctx, textUpdate(CHAT, "/annuler"));
     expect(sent.at(-1)!.text).toBe(NOTHING_TO_UNDO_MESSAGE);
+  });
+
+  it("/annuler : dernière action modifiée depuis → résumé et raison, sans reculer", async () => {
+    const { db, ctx, sent } = setup();
+    linkChat(db, String(CHAT));
+    const first = addAction(db, "Pain");
+    const second = addAction(db, "Café");
+    const txId = actionStatus(db, second).changes[0].id;
+    db.update(transactions).set({ label: "Manuel" }).where(eq(transactions.id, txId)).run();
+    await handleUpdate(ctx, textUpdate(CHAT, "/annuler"));
+    expect(sent.map((s) => s.text)).toEqual([
+      "Impossible d'annuler la dernière action (Opération « Café » ajoutée) : modifié depuis : opération « Café ».",
+    ]);
+    expect(actionStatus(db, first).undoneAt).toBeNull();
+    expect(actionStatus(db, second).undoneAt).toBeNull();
+  });
+
+  it("/annuler : erreur pendant l'annulation → message d'erreur", async () => {
+    const { db, ctx, sent } = setup({
+      undo: (async () => {
+        throw new Error("boom");
+      }) as unknown as BotContext["undo"],
+    });
+    linkChat(db, String(CHAT));
+    addAction(db);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(handleUpdate(ctx, textUpdate(CHAT, "/annuler"))).resolves.toBeUndefined();
+    expect(sent.map((s) => s.text)).toEqual([GENERIC_ERROR_MESSAGE]);
   });
 
   it("l'aide mentionne les modifications, « Annuler » et /annuler", async () => {

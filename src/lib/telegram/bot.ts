@@ -1,7 +1,7 @@
 import { BadRequestError } from "@/lib/api";
 import { aiErrorInfo, effectiveModel, getAi, type Ai } from "@/lib/ai/client";
 import { listModels } from "@/lib/ai/models";
-import { ACTION_NOT_FOUND, ALREADY_UNDONE, actionStatus, lastUndoableActionId, TOO_OLD } from "@/lib/ai/actions";
+import { ACTION_NOT_FOUND, ALREADY_UNDONE, actionStatus, lastRecentActionId, TOO_OLD } from "@/lib/ai/actions";
 import { ModelUnavailableError, respond } from "@/lib/assistant/conversation";
 import { UNDONE_PREFIX, undoAndAnnounce } from "@/lib/assistant/undo";
 import { registerChannel } from "@/lib/assistant/dispatch";
@@ -71,6 +71,7 @@ export type BotContext = {
   api: TelegramApi;
   getAi: () => Ai | null;
   respond: typeof respond;
+  undo: typeof undoAndAnnounce;
   listModels: typeof listModels;
   now: () => number;
   typingIntervalMs: number;
@@ -88,6 +89,7 @@ export function createBotContext(
     api,
     getAi: () => getAi(db),
     respond,
+    undo: undoAndAnnounce,
     listModels,
     now: Date.now,
     typingIntervalMs: TYPING_INTERVAL_MS,
@@ -286,7 +288,10 @@ async function removeUndoButton(ctx: BotContext, chatId: string, query: Telegram
   const message = query.message;
   if (!message || typeof message.message_id !== "number") return;
   const rows = message.reply_markup?.inline_keyboard;
-  const kept = (Array.isArray(rows) ? rows : [])
+  // Clavier inconnu (message inaccessible, plus de 48 h) : ne rien envoyer, sinon `null`
+  // effacerait aussi les boutons des autres actions.
+  if (!Array.isArray(rows)) return;
+  const kept = rows
     .map((row) => (Array.isArray(row) ? row.filter((b) => b?.callback_data !== undoData(id)) : []))
     .filter((row) => row.length > 0);
   try {
@@ -298,7 +303,7 @@ async function removeUndoButton(ctx: BotContext, chatId: string, query: Telegram
 
 /** Annule l'action `id` (bouton ou `/annuler`) ; le message système n'est pas renvoyé à Telegram. */
 async function undoFromTelegram(ctx: BotContext, id: number) {
-  const result = await undoAndAnnounce(ctx.db, id, { except: "telegram", now: ctx.now() });
+  const result = await ctx.undo(ctx.db, id, { except: "telegram", now: ctx.now() });
   return { result, text: result.ok ? `${UNDONE_PREFIX}${result.summary}` : result.reason };
 }
 
@@ -338,14 +343,28 @@ async function handleCallback(ctx: BotContext, query: TelegramCallbackQuery): Pr
   }
 }
 
-/** `/annuler` : annule la dernière action encore annulable. */
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+
+/**
+ * `/annuler` : annule la dernière action (non annulée, moins de 24 h). Si elle est bloquée
+ * (modifiée depuis), le dit avec son résumé et la raison, sans remonter à une plus ancienne.
+ */
 async function handleUndoCommand(ctx: BotContext, chatId: string): Promise<void> {
-  const id = lastUndoableActionId(ctx.db, ctx.now());
-  if (id === null) {
-    await ctx.api.sendMessage(chatId, escapeHtml(NOTHING_TO_UNDO_MESSAGE));
-    return;
+  let text: string;
+  try {
+    const id = lastRecentActionId(ctx.db, ctx.now());
+    if (id === null) text = NOTHING_TO_UNDO_MESSAGE;
+    else {
+      const { summary } = actionStatus(ctx.db, id, ctx.now());
+      const { result } = await undoFromTelegram(ctx, id);
+      text = result.ok
+        ? `${UNDONE_PREFIX}${result.summary}`
+        : `Impossible d'annuler la dernière action (${summary}) : ${lowerFirst(result.reason)}`;
+    }
+  } catch (err) {
+    console.error(`[telegram] échec de /annuler : ${describe(err)}`);
+    text = GENERIC_ERROR_MESSAGE;
   }
-  const { text } = await undoFromTelegram(ctx, id);
   await ctx.api.sendMessage(chatId, escapeHtml(text));
 }
 
