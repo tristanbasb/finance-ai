@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { takeNewUnread, type ThreadMessage } from "@/lib/assistant-thread";
 
-/** `loaded` : faux tant que le premier chargement n'a pas abouti. */
-export type UnreadState = { count: number; latest: ThreadMessage[]; loaded: boolean };
+/**
+ * `lastId` : id du dernier message du fil, lu ou non (0 inconnu). `loaded` : faux tant que le
+ * premier chargement n'a pas abouti.
+ */
+export type UnreadState = { count: number; latest: ThreadMessage[]; lastId: number; loaded: boolean };
 
 export const UNREAD_POLL_MS = 20_000;
 
-const EMPTY: UnreadState = { count: 0, latest: [], loaded: false };
+const EMPTY: UnreadState = { count: 0, latest: [], lastId: 0, loaded: false };
 
-function isUnreadBody(value: unknown): value is Omit<UnreadState, "loaded"> {
+function isUnreadBody(value: unknown): value is Omit<UnreadState, "loaded" | "lastId"> & { lastId?: unknown } {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return typeof v.count === "number" && Array.isArray(v.latest);
@@ -42,7 +45,8 @@ export function useUnread(onFresh: (messages: ThreadMessage[]) => void): {
         if (!res.ok) return;
         const body: unknown = await res.json();
         if (!isUnreadBody(body)) return;
-        setUnread({ count: body.count, latest: body.latest, loaded: true });
+        const lastId = typeof body.lastId === "number" ? body.lastId : 0;
+        setUnread({ count: body.count, latest: body.latest, lastId, loaded: true });
         if (seen.current === null) {
           // Premier chargement : rien à signaler, tout est considéré comme déjà vu.
           seen.current = new Set(body.latest.map((m) => m.id));

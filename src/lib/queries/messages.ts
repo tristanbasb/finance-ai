@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, max, sql } from "drizzle-orm";
 import type { Db } from "@/lib/db";
 import { messages } from "@/lib/db/schema";
 
@@ -71,7 +71,12 @@ const unreadWhere = and(
   isNull(messages.readAt),
 );
 
-export function unreadSummary(db: Db): { count: number; latest: Message[] } {
+/**
+ * Non-lus de Claude (`count`, 10 plus récents dans `latest`) et `lastId`, id du dernier message
+ * du fil, lu ou non (0 si vide) : l'app recharge son fil quand il change (note d'annulation
+ * déjà lue postée depuis Telegram, par exemple).
+ */
+export function unreadSummary(db: Db): { count: number; latest: Message[]; lastId: number } {
   const count = db
     .select({ n: sql<number>`count(*)`.mapWith(Number) })
     .from(messages)
@@ -85,7 +90,8 @@ export function unreadSummary(db: Db): { count: number; latest: Message[] } {
     .limit(10)
     .all()
     .map(toMessage);
-  return { count, latest };
+  const lastId = db.select({ id: max(messages.id) }).from(messages).get()?.id ?? 0;
+  return { count, latest, lastId };
 }
 
 /** Marque des messages assistant comme lus ; retourne le nombre de lignes modifiées. */
@@ -102,6 +108,7 @@ export function markRead(
 /**
  * Contexte envoyé à Claude : depuis le dernier divider, rôles fusionnés, tronqué par le début.
  * Les messages de `deferIds` (messages utilisateur en attente) sont placés en fin de contexte.
+ * Les notes d'annulation (`meta.undoneAction`) en sont exclues.
  */
 export function contextMessages(
   db: Db,
@@ -132,6 +139,8 @@ export function contextMessages(
   const merged: { role: "user" | "assistant"; content: string }[] = [];
   for (const r of rows) {
     if ((r.role !== "user" && r.role !== "assistant") || !r.content.trim()) continue;
+    // Notes « Action annulée : … » : affichage seulement, hors contexte (libellés bancaires).
+    if (r.role === "assistant" && r.meta && toMessage(r).meta?.undoneAction !== undefined) continue;
     const last = merged[merged.length - 1];
     if (last && last.role === r.role) last.content += "\n\n" + r.content;
     else merged.push({ role: r.role, content: r.content });

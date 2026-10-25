@@ -470,7 +470,16 @@ describe("handleUpdate", () => {
     await handleUpdate(ctx, textUpdate(CHAT, "/bilan"));
     expect(listMessages(db)[1]).toMatchObject({ role: "user", content: BILAN_PROMPT, source: "telegram" });
     expect(respondMock).toHaveBeenCalledTimes(1);
+    // Invite fixe : jamais d'outils d'écriture pour /bilan.
+    expect(respondMock.mock.calls[0][1 as 0]).toMatchObject({ allowWrite: false });
     expect(sent[1].text).toBe("Réponse <b>ok</b>");
+  });
+
+  it("message libre : écriture non bridée (réglage seul)", async () => {
+    const { db, ctx, respondMock } = setup();
+    linkChat(db, String(CHAT));
+    await handleUpdate(ctx, textUpdate(CHAT, "Ajoute 12 € de pain"));
+    expect((respondMock.mock.calls[0][1 as 0] as unknown as { allowWrite?: boolean }).allowWrite).not.toBe(false);
   });
 
   it("/aide, /start déjà relié et commande inconnue → aide", async () => {

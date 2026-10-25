@@ -237,6 +237,17 @@ describe("respond", () => {
     expect(m!.meta).toEqual({ replyTo: expect.any(Number) });
   });
 
+  it("allowWrite: false (/bilan) : outils d'écriture absents malgré le réglage", async () => {
+    const db = freshDb();
+    expect(aiCanWrite(db)).toBe(true);
+    addMessage(db, { role: "user", kind: "chat", content: "Fais le bilan", source: "telegram" });
+    const { ai, calls } = fakeAi([{ texts: ["Bilan."] }]);
+    const m = await respond(db, { ai, source: "telegram", channel: "telegram", today: TODAY, allowWrite: false });
+    expect(toolNames(calls[0])).toEqual(READ_NAMES);
+    expect(systemText(calls[0])).not.toContain("Modifications");
+    expect(m!.meta).toEqual({ replyTo: expect.any(Number) });
+  });
+
   it("libellé piégé lu par un outil : outils et prompt corrects, aucune écriture si le modèle n'en demande pas", async () => {
     const db = freshDb();
     const accountId = db.select().from(accounts).get()!.id;

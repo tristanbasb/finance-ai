@@ -79,8 +79,9 @@ export function AssistantConversation({
   }, [refreshTail, router]);
 
   // Pas de relevé périodique propre au fil : `useUnread` (cloche) interroge déjà le serveur toutes
-  // les 20 s. Un non-lu plus récent que le fil affiché déclenche le rechargement de sa fin ; le
-  // retour sur l'onglet le recharge aussi (messages Telegram envoyés entre-temps).
+  // les 20 s. Un non-lu, ou un message déjà lu (note d'annulation venue de Telegram), plus récent
+  // que le fil affiché déclenche le rechargement de sa fin ; le retour sur l'onglet le recharge
+  // aussi (messages Telegram envoyés entre-temps).
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible" && !streamingRef.current) void reloadTail();
@@ -95,10 +96,11 @@ export function AssistantConversation({
     streaming,
     lastId,
     unread: unread.latest,
+    latestId: unread.lastId,
   });
   useEffect(() => {
     if (behind && !streamingRef.current) void reloadTail();
-  }, [behind, unread.latest, reloadTail]);
+  }, [behind, unread.latest, unread.lastId, reloadTail]);
 
   // Marquage « lu » groupé des messages affichés.
   const toMark = useRef(new Set<number>());

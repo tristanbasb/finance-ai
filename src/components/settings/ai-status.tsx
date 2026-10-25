@@ -49,7 +49,10 @@ export function AiStatus() {
           <Sparkles aria-hidden className="size-4 text-accent" />
           Assistant IA
         </CardTitle>
-        <CardDescription>Analyses de vos dépenses et suggestions de catégories, propulsées par Claude.</CardDescription>
+        <CardDescription>
+          Analyses de vos dépenses et suggestions de catégories, propulsées par Claude. Si vous l&apos;y
+          autorisez, Claude peut aussi modifier vos données à votre demande.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <ModelSettings />

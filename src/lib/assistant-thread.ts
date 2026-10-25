@@ -146,7 +146,8 @@ export function takeNewUnread(latest: readonly ThreadMessage[], seen: Set<number
 
 /**
  * Le fil affiché est en retard sur les non-lus relevés par la cloche (`useUnread`, seul relevé
- * périodique) : un rechargement de la fin du fil s'impose. Jamais avant le premier chargement
+ * périodique), ou sur `latestId`, dernier message du fil lu ou non (note d'annulation venue de
+ * Telegram, déjà lue) : un rechargement de la fin du fil s'impose. Jamais avant le premier chargement
  * ni pendant une réponse en cours (le fil est rechargé à sa fin).
  */
 export function tailIsBehind({
@@ -154,14 +155,16 @@ export function tailIsBehind({
   streaming,
   lastId,
   unread,
+  latestId = 0,
 }: {
   ready: boolean;
   streaming: boolean;
   lastId: number;
   unread: readonly ThreadMessage[];
+  latestId?: number;
 }): boolean {
   if (!ready || streaming) return false;
-  return unread.some((m) => m.id > lastId);
+  return latestId > lastId || unread.some((m) => m.id > lastId);
 }
 
 /** Libellé de pastille : « 9+ » au-delà de 9. */

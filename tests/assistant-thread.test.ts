@@ -209,6 +209,11 @@ describe("tailIsBehind (rechargement du fil piloté par le relevé des non-lus)"
     expect(tailIsBehind({ ...base, unread: [msg(5), msg(3)] })).toBe(false);
     expect(tailIsBehind({ ...base, unread: [] })).toBe(false);
   });
+  it("recharge si un message déjà lu est plus récent (annulation depuis Telegram)", () => {
+    expect(tailIsBehind({ ...base, unread: [], latestId: 6 })).toBe(true);
+    expect(tailIsBehind({ ...base, unread: [], latestId: 5 })).toBe(false);
+    expect(tailIsBehind({ ...base, streaming: true, unread: [], latestId: 6 })).toBe(false);
+  });
   it("attend la fin du chargement initial et d'une réponse en cours", () => {
     expect(tailIsBehind({ ...base, ready: false, unread: [msg(9)] })).toBe(false);
     expect(tailIsBehind({ ...base, streaming: true, unread: [msg(9)] })).toBe(false);

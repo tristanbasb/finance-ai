@@ -51,7 +51,9 @@ describe("actionKind", () => {
     expect(actionKind("rename_category")).toMatchObject({ family: "category", label: "Catégorie renommée" });
     expect(actionKind("create_goal").family).toBe("goal");
     expect(actionKind("archive_account")).toMatchObject({ family: "account", label: "Compte archivé" });
-    expect(actionKind("delete_holding")).toMatchObject({ family: "holding", label: "Placement supprimé" });
+    expect(actionKind("add_holding")).toMatchObject({ family: "holding", label: "Position ajoutée" });
+    expect(actionKind("update_holding")).toMatchObject({ family: "holding", label: "Position modifiée" });
+    expect(actionKind("delete_holding")).toMatchObject({ family: "holding", label: "Position supprimée" });
   });
 
   it("une même famille partage icône et teinte", () => {
@@ -177,6 +179,12 @@ describe("ids d'actions du fil", () => {
 });
 
 describe("actionSummaryText", () => {
+  it("libellé d'archivage tiré du résumé : archivé ou désarchivé", () => {
+    expect(actionKind("archive_account", "Compte Livret A archivé").label).toBe("Compte archivé");
+    expect(actionKind("archive_account", "Compte Livret A désarchivé").label).toBe("Compte désarchivé");
+    expect(actionKind("rename_account", "Compte A désarchivé").label).toBe("Compte renommé");
+  });
+
   it("retire le libellé déjà affiché en tête du résumé", () => {
     expect(actionSummaryText("Opération ajoutée : Pain −12,00 €", "Opération ajoutée")).toBe("Pain −12,00 €");
     expect(actionSummaryText("Budget « Courses » : 300,00 €", "Budget")).toBe("Budget « Courses » : 300,00 €");

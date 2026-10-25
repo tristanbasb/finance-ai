@@ -66,7 +66,7 @@ export function ActionCard({ action, now, onChanged }: { action: ActionView; now
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
-  const kind = actionKind(action.tool);
+  const kind = actionKind(action.tool, action.summary);
   const Icon = ICONS[kind.icon];
   const display =
     outcome?.kind === "undone"

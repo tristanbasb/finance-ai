@@ -61,7 +61,8 @@ export async function postAssistantMessage(
  * Renvoie null si rien n'a été enregistré (annulation sans texte, aucun message en attente).
  *
  * Écriture : toujours un tour déclenché par l'utilisateur (app, Telegram, relance `{ retry }`
- * de l'app) ; les outils d'écriture sont donc fournis si le réglage `ai_can_write` est vrai.
+ * de l'app) ; les outils d'écriture sont donc fournis si le réglage `ai_can_write` est vrai,
+ * sauf `allowWrite: false` (invite fixe comme `/bilan` sur Telegram).
  * Les actions journalisées sont listées dans `meta.actions` (si non vide) et rattachées au
  * message. Si des modifications ont eu lieu, un message est TOUJOURS enregistré, même en cas
  * d'erreur (texte partiel + `ACTIONS_INTERRUPTED_NOTE`, sans lever) ou d'annulation : les cartes
@@ -77,6 +78,7 @@ export function respond(
     onEvent,
     today,
     channel,
+    allowWrite = true,
   }: {
     ai: Ai;
     source: "app" | "telegram";
@@ -85,6 +87,8 @@ export function respond(
     today?: string;
     /** Canal de lecture (consigne de format dans le prompt) ; défaut : application. */
     channel?: ChatChannel;
+    /** Faux : aucun outil d'écriture pour ce tour, quel que soit le réglage. */
+    allowWrite?: boolean;
   },
 ): Promise<Message | null> {
   return withGenerationLock(async () => {
@@ -98,7 +102,7 @@ export function respond(
     if (!pending.length || context[context.length - 1].role !== "user") return null;
     const replyTo = pending[pending.length - 1].id;
 
-    const write: WriteSession | undefined = aiCanWrite(db) ? { actionIds: [] } : undefined;
+    const write: WriteSession | undefined = allowWrite && aiCanWrite(db) ? { actionIds: [] } : undefined;
     const hasActions = () => (write?.actionIds.length ?? 0) > 0;
     let text = "";
     let aborted = false;

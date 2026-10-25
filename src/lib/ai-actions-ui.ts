@@ -55,18 +55,22 @@ const TOOLS: Record<WriteToolName, { family: Exclude<ActionFamily, "other">; lab
   create_account: { family: "account", label: "Compte créé" },
   rename_account: { family: "account", label: "Compte renommé" },
   archive_account: { family: "account", label: "Compte archivé" },
-  add_holding: { family: "holding", label: "Placement ajouté" },
-  update_holding: { family: "holding", label: "Placement modifié" },
-  delete_holding: { family: "holding", label: "Placement supprimé" },
+  add_holding: { family: "holding", label: "Position ajoutée" },
+  update_holding: { family: "holding", label: "Position modifiée" },
+  delete_holding: { family: "holding", label: "Position supprimée" },
 };
 
 const FALLBACK: ActionKind = { family: "other", icon: "PencilLine", label: "Modification", tone: "accent" };
 
-/** Type d'une action d'après le nom de l'outil : famille, icône, libellé court, teinte. */
-export function actionKind(tool: string): ActionKind {
+/**
+ * Type d'une action d'après le nom de l'outil : famille, icône, libellé court, teinte. Le résumé
+ * précise le libellé quand un même outil fait deux choses (`archive_account` désarchive aussi).
+ */
+export function actionKind(tool: string, summary?: string): ActionKind {
   const entry = Object.hasOwn(TOOLS, tool) ? TOOLS[tool as WriteToolName] : undefined;
   if (!entry) return FALLBACK;
-  return { family: entry.family, label: entry.label, ...FAMILIES[entry.family] };
+  const label = tool === "archive_account" && summary?.trimEnd().endsWith("désarchivé") ? "Compte désarchivé" : entry.label;
+  return { family: entry.family, label, ...FAMILIES[entry.family] };
 }
 
 /**

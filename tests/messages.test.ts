@@ -68,6 +68,18 @@ describe("messages : non-lus", () => {
     expect(s.latest[0].content).toBe("a11");
   });
 
+  it("lastId : dernier message du fil, lu ou non, tous rôles confondus", () => {
+    const db = freshDb();
+    expect(unreadSummary(db).lastId).toBe(0);
+    asst(db, "a", 1);
+    const note = addMessage(db, { role: "assistant", kind: "chat", content: "Action annulée : x", source: "system", now: 2, readAt: 2 });
+    const s = unreadSummary(db);
+    expect(s.count).toBe(1);
+    expect(s.lastId).toBe(note.id);
+    const u = user(db, "q", 3);
+    expect(unreadSummary(db).lastId).toBe(u.id);
+  });
+
   it("markRead par ids et all", () => {
     const db = freshDb();
     const a = asst(db, "a", 1);
@@ -159,6 +171,28 @@ describe("contextMessages", () => {
     expect(contextMessages(db, {})).toEqual([]);
     asst(db, "a", 3);
     expect(contextMessages(db, {})).toEqual([]);
+  });
+
+  it("exclut les notes d'annulation sans toucher aux questions en attente", () => {
+    const db = freshDb();
+    const q1 = user(db, "Q1", 1);
+    addMessage(db, { role: "assistant", kind: "chat", content: "R1", source: "app", meta: { replyTo: q1.id }, now: 2 });
+    const q2 = user(db, "Q2", 3);
+    addMessage(db, {
+      role: "assistant",
+      kind: "chat",
+      content: "Action annulée : Opération ajoutée : CB CARREFOUR 1234",
+      source: "system",
+      meta: { undoneAction: 7, replyTo: q2.id - 1 },
+      now: 4,
+      readAt: 4,
+    });
+    expect(contextMessages(db, {})).toEqual([
+      { role: "user", content: "Q1" },
+      { role: "assistant", content: "R1" },
+      { role: "user", content: "Q2" },
+    ]);
+    expect(pendingUserMessages(db).map((m) => m.id)).toEqual([q2.id]);
   });
 
   it("ignore les lignes vides", () => {

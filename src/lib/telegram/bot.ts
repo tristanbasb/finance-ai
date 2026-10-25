@@ -237,7 +237,12 @@ async function handleModel(ctx: BotContext, chatId: string, arg: string): Promis
 }
 
 /** Ajoute le message au fil, fait répondre Claude (« typing » toutes les 4 s) et envoie la réponse. */
-async function converse(ctx: BotContext, chatId: string, content: string): Promise<void> {
+async function converse(
+  ctx: BotContext,
+  chatId: string,
+  content: string,
+  { allowWrite = true }: { allowWrite?: boolean } = {},
+): Promise<void> {
   const ai = ctx.getAi();
   if (!ai) {
     await ctx.api.sendMessage(chatId, escapeHtml(AI_DISABLED_TELEGRAM_MESSAGE));
@@ -251,7 +256,7 @@ async function converse(ctx: BotContext, chatId: string, content: string): Promi
   let reply: Message | null;
   const signal = AbortSignal.timeout(ctx.respondTimeoutMs);
   try {
-    reply = await ctx.respond(ctx.db, { ai, source: "telegram", channel: "telegram", signal });
+    reply = await ctx.respond(ctx.db, { ai, source: "telegram", channel: "telegram", signal, allowWrite });
   } catch (err) {
     let text: string;
     if (err instanceof ModelUnavailableError || err instanceof BadRequestError) text = err.message;
@@ -409,7 +414,8 @@ export async function handleUpdate(ctx: BotContext, update: TelegramUpdate): Pro
       await ctx.api.sendMessage(chatId, NEW_CONVERSATION_MESSAGE);
       return;
     case "bilan":
-      await converse(ctx, chatId, BILAN_PROMPT);
+      // Invite fixe : lecture seule, jamais d'outils d'écriture.
+      await converse(ctx, chatId, BILAN_PROMPT, { allowWrite: false });
       return;
     case "modele":
       await handleModel(ctx, chatId, command.args);
