@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
+import { accounts } from "@/lib/db/schema";
 import type { Ai } from "@/lib/ai/client";
 import {
   defaultAccountId,
@@ -173,6 +174,58 @@ describe("POST /api/ai/parse-transaction", () => {
       const body = await res.json();
       expect(body).toMatchObject({ amountCents: 1250, kind: "expense", categoryId: null, date: "2026-10-20" });
       expect(typeof body.accountId).toBe("number");
+    });
+
+    describe("preferredAccountId", () => {
+      function seedAccounts() {
+        const db = getDb();
+        const [open, archived] = db
+          .insert(accounts)
+          .values([
+            { name: "Préféré test", type: "savings" },
+            { name: "Archivé test", type: "checking", archived: true },
+          ])
+          .returning()
+          .all();
+        return { open: open.id, archived: archived.id };
+      }
+      const model = (over: Record<string, unknown>) =>
+        vi.spyOn(Anthropic.Messages.prototype, "parse").mockResolvedValue({
+          parsed_output: { ...valid, categoryId: 999, ...over },
+        } as never);
+
+      it("utilisé quand le modèle ne désigne aucun compte (200 et 422)", async () => {
+        const { open } = seedAccounts();
+        model({ accountId: null });
+        expect((await (await post({ text: "12,50 resto", preferredAccountId: open })).json()).accountId).toBe(open);
+        model({ accountId: null, amountCents: 0 });
+        const res = await post({ text: "resto", preferredAccountId: open });
+        expect(res.status).toBe(422);
+        expect((await res.json()).partial.accountId).toBe(open);
+      });
+
+      it("ignoré s'il est archivé ou inconnu : compte par défaut", async () => {
+        const { open, archived } = seedAccounts();
+        model({ accountId: null });
+        const def = (await (await post({ text: "12,50 resto" })).json()).accountId;
+        expect(def).not.toBe(archived);
+        for (const preferredAccountId of [archived, 999_999]) {
+          const body = await (await post({ text: "12,50 resto", preferredAccountId })).json();
+          expect(body.accountId).toBe(def);
+        }
+        expect(open).not.toBe(def);
+        model({ accountId: null, amountCents: 0 });
+        const partial = (await (await post({ text: "resto", preferredAccountId: archived })).json()).partial;
+        expect(partial.accountId).toBe(def);
+      });
+
+      it("le compte nommé par le modèle l'emporte ; identifiant invalide -> 400", async () => {
+        const { open } = seedAccounts();
+        const named = getDb().select().from(accounts).get()!.id;
+        model({ accountId: named });
+        expect((await (await post({ text: "12,50 resto", preferredAccountId: open })).json()).accountId).toBe(named);
+        expect((await post({ text: "12 euros", preferredAccountId: -1 })).status).toBe(400);
+      });
     });
 
     it("délai dépassé -> 504 sans journal d'erreur ; requête annulée -> 400 silencieux", async () => {

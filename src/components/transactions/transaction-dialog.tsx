@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -139,6 +140,7 @@ export function TransactionDialog({
         Annuler
       </Button>
       <Button variant="danger" onClick={remove} loading={deleting}>
+        <Trash2 size={16} aria-hidden="true" />
         Confirmer la suppression
       </Button>
     </>
@@ -150,6 +152,7 @@ export function TransactionDialog({
         onClick={() => setConfirmDelete(true)}
         disabled={busy}
       >
+        <Trash2 size={16} aria-hidden="true" />
         Supprimer
       </Button>
       <Button variant="secondary" onClick={onClose} disabled={busy}>

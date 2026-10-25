@@ -70,7 +70,7 @@ export function AccountsManager({ accounts }: { accounts: AccountRow[] }) {
           <EmptyState
             icon={Landmark}
             title="Aucun compte"
-            description="Ajoutez un premier compte pour saisir vos transactions."
+            description="Ajoutez un premier compte pour saisir vos opérations."
             action={
               <Button onClick={openAdd}>
                 <Plus aria-hidden />

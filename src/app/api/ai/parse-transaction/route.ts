@@ -10,15 +10,19 @@ import { listCategories } from "@/lib/queries/categories";
 
 export const dynamic = "force-dynamic";
 
-const body = z.object({ text: z.string().trim().min(1).max(500) });
+const body = z.object({
+  text: z.string().trim().min(1).max(500),
+  preferredAccountId: z.number().int().positive().optional(),
+});
 
 /**
- * `{ text }` -> proposition de transaction (compte par défaut si Claude n'en désigne pas).
+ * `{ text, preferredAccountId? }` -> proposition de transaction (si Claude ne désigne aucun compte :
+ * `preferredAccountId` s'il est ouvert, sinon le compte par défaut).
  * 422 `{ error, partial }` si aucun montant n'est trouvé (`partial` préremplit le formulaire).
  */
 export const POST = withAiErrors(async (req: Request) => {
   const ai = requireAi();
-  const { text } = body.parse(await readJson(req));
+  const { text, preferredAccountId } = body.parse(await readJson(req));
   const db = getDb();
   const accounts = listAccountsWithBalances(db).map((a) => ({
     id: a.id,
@@ -27,7 +31,7 @@ export const POST = withAiErrors(async (req: Request) => {
     archived: a.archived,
   }));
   const categories = listCategories(db).map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
-  const fallback = defaultAccountId(accounts);
+  const fallback = defaultAccountId(accounts, preferredAccountId);
 
   try {
     const proposal = await parseTransaction(

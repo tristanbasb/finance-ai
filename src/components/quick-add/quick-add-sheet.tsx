@@ -136,7 +136,7 @@ export function QuickAddSheet({
       const res = await fetch("/api/ai/parse-transaction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: trimmed }),
+        body: JSON.stringify({ text: trimmed, preferredAccountId: defaults.accountId ?? undefined }),
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
