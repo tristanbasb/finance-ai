@@ -27,6 +27,10 @@ export type AlertScope = { txIds?: number[]; prices?: boolean; goals?: boolean }
 /** Fenêtre de fraîcheur d'une variation de cours : celle d'une actualisation qui vient d'avoir lieu. */
 const PRICE_FRESH_MS = 5 * 60_000;
 const MEDIAN_DAYS = 90;
+/** Une dépense plus ancienne (import d'historique, vieille correction) n'est plus d'actualité. */
+const EXPENSE_RECENT_DAYS = 35;
+/** Nombre maximal d'alertes détaillées dans un message ; les autres sont résumées. */
+export const MAX_ALERTS_IN_MESSAGE = 10;
 
 /**
  * Journalise les alertes (clé + clés supplémentaires) ; insertion atomique, les clés déjà
@@ -71,13 +75,37 @@ function templateLine(a: Alert): string {
   }
 }
 
-function templateMessage(alerts: Alert[]): string {
-  const head = alerts.length === 1 ? "Un petit point sur vos finances :" : "Quelques points sur vos finances :";
-  return `${head}\n\n${alerts.map((a) => `- ${templateLine(a)}`).join("\n")}`;
+function othersLine(extra: number): string {
+  return `… et ${extra} autre${extra > 1 ? "s" : ""} alerte${extra > 1 ? "s" : ""}.`;
+}
+
+function templateMessage(alerts: Alert[], extra: number): string {
+  const head = alerts.length === 1 && extra === 0 ? "Un petit point sur vos finances :" : "Quelques points sur vos finances :";
+  const lines = alerts.map((a) => `- ${templateLine(a)}`);
+  if (extra > 0) lines.push(othersLine(extra));
+  return `${head}\n\n${lines.join("\n")}`;
+}
+
+const PRIORITY: Record<Alert["type"], number> = { budget100: 0, budget80: 1, expense: 2, price: 3, goal: 4 };
+
+/** Poids d'une alerte pour départager celles d'un même type (montant, variation). */
+function magnitude(a: Alert): number {
+  const num = (v: string | number | undefined) =>
+    Number(String(v ?? "").replace(/[^\d,-]/g, "").replace(",", ".")) || 0;
+  if (a.type === "expense") return num(a.facts.amount);
+  if (a.type === "price") return Math.abs(num(a.facts.changePct));
+  return 0;
+}
+
+/** Tri par importance : budget dépassé, budget 80 %, dépenses (montant), cours (variation), objectifs. */
+export function sortAlerts(alerts: Alert[]): Alert[] {
+  return [...alerts].sort((a, b) => PRIORITY[a.type] - PRIORITY[b.type] || magnitude(b) - magnitude(a));
 }
 
 /** Texte d'un message d'alerte groupé : rédigé par Claude (sans outils), sinon texte modèle. */
-export async function alertMessage(ai: Ai | null, alerts: Alert[]): Promise<string> {
+export async function alertMessage(ai: Ai | null, all: Alert[]): Promise<string> {
+  const alerts = all.slice(0, MAX_ALERTS_IN_MESSAGE);
+  const extra = all.length - alerts.length;
   if (ai) {
     try {
       const msg = await ai.client.messages.create({
@@ -88,7 +116,9 @@ export async function alertMessage(ai: Ai | null, alerts: Alert[]): Promise<stri
         messages: [
           {
             role: "user",
-            content: `Alertes (JSON) :\n${JSON.stringify(alerts.map((a) => ({ type: a.type, facts: a.facts })))}`,
+            content:
+              `Alertes (JSON) :\n${JSON.stringify(alerts.map((a) => ({ type: a.type, facts: a.facts })))}` +
+              (extra > 0 ? `\n\nTermine le message par la ligne exacte : « ${othersLine(extra)} »` : ""),
           },
         ],
       });
@@ -101,7 +131,7 @@ export async function alertMessage(ai: Ai | null, alerts: Alert[]): Promise<stri
       console.error("[alerts] rédaction par Claude échouée, texte modèle utilisé :", aiErrorInfo(err)?.message ?? err);
     }
   }
-  return templateMessage(alerts);
+  return templateMessage(alerts, extra);
 }
 
 function shiftDays(date: string, days: number): string {
@@ -175,7 +205,7 @@ function expenseCandidates(db: Db, txs: (typeof transactions.$inferSelect)[], mi
   return unusualExpense({ transactions: inputs, minCents });
 }
 
-function priceCandidates(db: Db, thresholdPct: number, now: number): Alert[] {
+function priceCandidates(db: Db, thresholdPct: number, now: number, today: string): Alert[] {
   const fresh = new Map<string, number>();
   for (const p of db.select().from(prices).where(gte(prices.fetchedAt, now - PRICE_FRESH_MS)).all()) {
     if (p.changePct !== null) fresh.set(p.symbol, p.changePct);
@@ -194,7 +224,7 @@ function priceCandidates(db: Db, thresholdPct: number, now: number): Alert[] {
       valueCents: (prev?.valueCents ?? 0) + h.value,
     });
   }
-  return priceMoveAlerts({ moves: [...bySymbol.values()], thresholdPct, date: todayLocal(new Date(now)) });
+  return priceMoveAlerts({ moves: [...bySymbol.values()], thresholdPct, date: today });
 }
 
 function goalCandidates(db: Db, today: string): Alert[] {
@@ -215,37 +245,50 @@ type QueueState = { tail: Promise<void> };
 const g = globalThis as typeof globalThis & { __financeAiAlertQueue?: QueueState };
 const queue: QueueState = (g.__financeAiAlertQueue ??= { tail: Promise.resolve() });
 
-type Deps = { ai?: Ai | null; now?: number };
+type Deps = { ai?: Ai | null; now?: number; today?: string };
 
 async function check(db: Db, scope: AlertScope, deps: Deps): Promise<void> {
   const prefs = alertPrefs(db);
   if (!prefs.enabled) return;
   const now = deps.now ?? Date.now();
-  const today = todayLocal(new Date(now));
+  const today = deps.today ?? todayLocal(new Date(now));
+  const month = today.slice(0, 7);
 
   const candidates: Alert[] = [];
   if (scope.txIds && scope.txIds.length > 0) {
     const txs = db.select().from(transactions).where(inArray(transactions.id, scope.txIds)).all();
-    if (prefs.budget) {
-      candidates.push(...budgetCandidates(db, [...new Set(txs.map((t) => t.date.slice(0, 7)))].sort()));
+    // Budgets : mois courant seulement, et seulement si une transaction concernée y figure.
+    if (prefs.budget && txs.some((t) => t.date.slice(0, 7) === month)) {
+      candidates.push(...budgetCandidates(db, [month]));
     }
-    if (prefs.unusualExpense) candidates.push(...expenseCandidates(db, txs, Math.round(prefs.unusualMinEur * 100)));
+    const recentFrom = shiftDays(today, -EXPENSE_RECENT_DAYS);
+    if (prefs.unusualExpense) {
+      const recent = txs.filter((t) => t.date >= recentFrom);
+      candidates.push(...expenseCandidates(db, recent, Math.round(prefs.unusualMinEur * 100)));
+    }
   }
-  if (scope.prices && prefs.priceMove) candidates.push(...priceCandidates(db, prefs.priceMovePct, now));
+  if (scope.prices && prefs.priceMove) candidates.push(...priceCandidates(db, prefs.priceMovePct, now, today));
   if (scope.goals && prefs.goalReached) candidates.push(...goalCandidates(db, today));
   if (candidates.length === 0) return;
 
-  const fresh = claimAlerts(db, candidates);
-  if (fresh.length === 0) return;
+  const claimed = claimAlerts(db, candidates);
+  if (claimed.length === 0) return;
+  const keys = claimed.flatMap((a) => [a.key, ...(a.extraKeys ?? [])]);
 
-  const content = await alertMessage(deps.ai === undefined ? getAi(db) : deps.ai, fresh);
-  const message = await postAssistantMessage(db, {
-    kind: "alert",
-    content,
-    meta: { keys: fresh.map((a) => a.key), types: fresh.map((a) => a.type) },
-  });
-  const keys = fresh.flatMap((a) => [a.key, ...(a.extraKeys ?? [])]);
-  db.update(alertLog).set({ messageId: message.id }).where(inArray(alertLog.key, keys)).run();
+  try {
+    const fresh = sortAlerts(claimed);
+    const content = await alertMessage(deps.ai === undefined ? getAi(db) : deps.ai, fresh);
+    const message = await postAssistantMessage(db, {
+      kind: "alert",
+      content,
+      meta: { keys: fresh.map((a) => a.key), types: fresh.map((a) => a.type) },
+    });
+    db.update(alertLog).set({ messageId: message.id }).where(inArray(alertLog.key, keys)).run();
+  } catch (err) {
+    // Rien n'a été publié : libérer les clés pour qu'un prochain contrôle réessaie.
+    db.delete(alertLog).where(and(inArray(alertLog.key, keys), isNull(alertLog.messageId))).run();
+    throw err;
+  }
 }
 
 /**

@@ -11,6 +11,7 @@ import { refreshPrices, type PriceFetcher } from "@/lib/prices";
 import { registerChannel } from "@/lib/assistant/dispatch";
 import { setSetting } from "@/lib/settings";
 import type { Ai } from "@/lib/ai/client";
+import * as conversation from "@/lib/assistant/conversation";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -177,13 +178,13 @@ describe("runAlertChecks", () => {
       amount: -12_000,
       label: "Courses",
     });
-    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null });
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
     const msgs = allMessages(db);
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toMatchObject({ kind: "alert", source: "system" });
     const log = db.select().from(alertLog).all();
     expect(log.some((r) => r.key === `budget:${cat.id}:2026-10:100` && r.messageId === msgs[0].id)).toBe(true);
-    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null });
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
     expect(allMessages(db)).toHaveLength(1);
     expect(sent).toHaveLength(1);
   });
@@ -199,7 +200,7 @@ describe("runAlertChecks", () => {
       amount: -12_000,
       label: "x",
     });
-    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null });
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
     expect(allMessages(db)).toHaveLength(0);
     expect(db.select().from(alertLog).all()).toHaveLength(0);
   });
@@ -215,7 +216,7 @@ describe("runAlertChecks", () => {
       amount: -12_000,
       label: "x",
     });
-    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null });
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
     expect(allMessages(db)).toHaveLength(0);
   });
 
@@ -229,7 +230,7 @@ describe("runAlertChecks", () => {
     );
     const big = createTransaction(db, { accountId, categoryId: cat.id, date: "2026-10-10", amount: -20_000, label: "Gros" });
     const small = createTransaction(db, { accountId, categoryId: cat.id, date: "2026-10-11", amount: -5_000, label: "Petit" });
-    await runAlertChecks(db, { txIds: [big.id, small.id] }, { ai: null });
+    await runAlertChecks(db, { txIds: [big.id, small.id] }, { ai: null, today: "2026-10-25" });
     expect(db.select().from(alertLog).all().map((r) => r.key)).toEqual([`expense:${big.id}`]);
   });
 
@@ -249,10 +250,13 @@ describe("runAlertChecks", () => {
       })),
     );
     expect(ids).toHaveLength(50);
-    await runAlertChecks(db, { txIds: ids }, { ai: null });
+    await runAlertChecks(db, { txIds: ids }, { ai: null, today: "2026-10-25" });
     expect(db.select().from(alertLog).all()).toHaveLength(30);
     expect(allMessages(db)).toHaveLength(1);
     expect(sent).toHaveLength(1);
+    const content = allMessages(db)[0].content;
+    expect(content.match(/^- /gm)).toHaveLength(10);
+    expect(content).toContain("et 20 autres alertes");
   });
 
   it("objectif atteint (solde du compte lié)", async () => {
@@ -260,7 +264,7 @@ describe("runAlertChecks", () => {
     const acc = account(db);
     db.insert(goals).values({ name: "Vacances", targetAmount: 100_000, currentAmount: 0, accountId: acc.id }).run();
     createTransaction(db, { accountId: acc.id, categoryId: null, date: "2026-10-01", amount: 2_000_000, label: "Salaire" });
-    await runAlertChecks(db, { goals: true }, { ai: null });
+    await runAlertChecks(db, { goals: true }, { ai: null, today: "2026-10-25" });
     expect(allMessages(db)).toHaveLength(1);
     expect(db.select().from(alertLog).all()[0].key).toMatch(/^goal:/);
   });
@@ -275,7 +279,7 @@ describe("runAlertChecks", () => {
     const none: PriceFetcher = async () => new Map();
     await refreshPrices(db, { stock, crypto: none, fx: async () => 1 }, new Date(), true);
     expect(db.select().from(prices).where(eq(prices.symbol, "AAPL")).get()!.changePct).toBe(6.2);
-    await runAlertChecks(db, { prices: true }, { ai: null });
+    await runAlertChecks(db, { prices: true }, { ai: null, today: "2026-10-25" });
     const log = db.select().from(alertLog).all();
     expect(log).toHaveLength(1);
     expect(log[0].key).toMatch(/^price:AAPL:\d{4}-\d{2}-\d{2}:up$/);
@@ -292,7 +296,58 @@ describe("runAlertChecks", () => {
       amount: -12_000,
       label: "x",
     });
-    await runAlertChecks(db, { txIds: [tx.id] }, { ai: fakeAi(new Error("down")).ai });
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: fakeAi(new Error("down")).ai, today: "2026-10-25" });
     expect(allMessages(db)[0].content).toContain("**");
+  });
+
+  it("historique importé : pas d'alerte budget sur les mois passés ni de dépense inhabituelle ancienne", async () => {
+    const db = freshDb();
+    const accountId = account(db).id;
+    const cat = expenseCat(db, 10_000);
+    const ids = insertTransactions(
+      db,
+      Array.from({ length: 12 }, (_, i) => ({
+        accountId,
+        categoryId: cat.id,
+        date: `2025-${String(i + 1).padStart(2, "0")}-10`,
+        amount: -50_000,
+        label: `h${i}`,
+      })),
+    );
+    await runAlertChecks(db, { txIds: ids }, { ai: null, today: "2026-10-25" });
+    expect(db.select().from(alertLog).all()).toHaveLength(0);
+    expect(allMessages(db)).toHaveLength(0);
+  });
+
+  it("modification d'une vieille transaction : rien", async () => {
+    const db = freshDb();
+    const cat = expenseCat(db, 10_000);
+    const tx = createTransaction(db, { accountId: account(db).id, categoryId: cat.id, date: "2026-08-10", amount: -90_000, label: "old" });
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
+    expect(allMessages(db)).toHaveLength(0);
+  });
+
+  it("dépense de 35 jours incluse, 36 jours exclue", async () => {
+    const db = freshDb();
+    const cat = expenseCat(db, null);
+    const accountId = account(db).id;
+    const a = createTransaction(db, { accountId, categoryId: cat.id, date: "2026-09-20", amount: -50_000, label: "a" });
+    const b = createTransaction(db, { accountId, categoryId: cat.id, date: "2026-09-19", amount: -50_000, label: "b" });
+    await runAlertChecks(db, { txIds: [a.id, b.id] }, { ai: null, today: "2026-10-25" });
+    expect(db.select().from(alertLog).all().map((r) => r.key)).toEqual([`expense:${a.id}`]);
+  });
+
+  it("échec de publication : clés libérées, le contrôle suivant renvoie l'alerte", async () => {
+    const db = freshDb();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const cat = expenseCat(db, 10_000);
+    const tx = createTransaction(db, { accountId: account(db).id, categoryId: cat.id, date: "2026-10-10", amount: -12_000, label: "x" });
+    const spy = vi.spyOn(conversation, "postAssistantMessage").mockRejectedValueOnce(new Error("db down"));
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
+    expect(db.select().from(alertLog).all()).toHaveLength(0);
+    expect(allMessages(db)).toHaveLength(0);
+    spy.mockRestore();
+    await runAlertChecks(db, { txIds: [tx.id] }, { ai: null, today: "2026-10-25" });
+    expect(allMessages(db)).toHaveLength(1);
   });
 });
