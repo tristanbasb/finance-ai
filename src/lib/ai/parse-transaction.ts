@@ -58,11 +58,8 @@ const output = z.object({
   accountId: z.number().int().nullable(),
 });
 
-/** Premier compte courant non archivé, sinon premier compte non archivé, sinon null. */
-export function defaultAccountId(accounts: AccountOption[]): number | null {
-  const open = accounts.filter((a) => !a.archived);
-  return (open.find((a) => a.type === "checking") ?? open[0])?.id ?? null;
-}
+/** Premier compte courant non archivé, sinon premier compte non archivé, sinon null (partagé avec le client). */
+export { defaultAccountId } from "@/lib/quick-add";
 
 function isRealDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

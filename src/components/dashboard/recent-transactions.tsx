@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, ReceiptText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { QuickAddButton } from "@/components/quick-add/quick-add-button";
 import { buttonClasses } from "@/components/ui/button";
 import { Amount } from "@/components/amount";
 import { CategoryIcon } from "@/components/category-icon";
@@ -34,9 +35,7 @@ export function RecentTransactions({ transactions }: { transactions: Transaction
             title="Aucune transaction"
             description="Saisissez une dépense ou importez un relevé bancaire au format CSV."
             action={
-              <Link href="/transactions" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                Ajouter une transaction
-              </Link>
+              <QuickAddButton variant="secondary" size="sm" />
             }
           />
         ) : (

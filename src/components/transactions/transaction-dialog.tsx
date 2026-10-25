@@ -4,44 +4,18 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { controlClasses, describedBy, Field } from "@/components/ui/field";
 import { toast } from "@/components/ui/toast";
-import { cn } from "@/lib/cn";
-import { parseAmount } from "@/lib/money";
+import { errorMessage } from "@/lib/http";
+import {
+  proposalToFormValues,
+  validateTransactionForm,
+  type TransactionFormErrors,
+  type TransactionFormValues,
+} from "@/lib/quick-add";
 import type { TransactionRow } from "@/lib/queries/transactions";
+import { TransactionFields, type AccountOption, type CategoryOption } from "./transaction-fields";
 
-export type AccountOption = { id: number; name: string; archived: boolean };
-export type CategoryOption = {
-  id: number;
-  name: string;
-  kind: "expense" | "income";
-  color: string;
-  icon: string;
-};
-
-type Kind = "expense" | "income";
-
-const textareaClasses = controlClasses.replace("h-10 ", "min-h-20 py-2 ");
-
-/** « 1250 » (centimes) → « 12,50 » pour pré-remplir le champ montant. */
-function centsToInput(cents: number): string {
-  const abs = Math.abs(cents);
-  return `${Math.floor(abs / 100)},${String(abs % 100).padStart(2, "0")}`;
-}
-
-async function errorMessage(res: Response): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: unknown };
-    if (typeof body.error === "string") return body.error;
-  } catch {
-    /* corps absent ou illisible */
-  }
-  return "Une erreur est survenue. Réessayez.";
-}
-
-type Errors = Partial<Record<"amount" | "date" | "label" | "account" | "note", string>>;
+export type { AccountOption, CategoryOption } from "./transaction-fields";
 
 export type TransactionDialogProps = {
   open: boolean;
@@ -78,18 +52,27 @@ export function TransactionDialog({
     [accounts, transaction?.accountId],
   );
 
-  const [kind, setKind] = useState<Kind>(transaction && transaction.amount > 0 ? "income" : "expense");
-  const [amount, setAmount] = useState(transaction ? centsToInput(transaction.amount) : "");
-  const [date, setDate] = useState(transaction?.date ?? today);
-  const [label, setLabel] = useState(transaction?.label ?? "");
-  const [accountId, setAccountId] = useState(() => {
-    if (transaction) return String(transaction.accountId);
+  const [values, setValues] = useState<TransactionFormValues>(() => {
+    if (transaction) {
+      return {
+        ...proposalToFormValues(
+          {
+            amountCents: transaction.amount,
+            kind: transaction.amount > 0 ? "income" : "expense",
+            categoryId: transaction.categoryId,
+            label: transaction.label,
+            date: transaction.date,
+            accountId: transaction.accountId,
+          },
+          { today, accountId: null },
+        ),
+        note: transaction.note ?? "",
+      };
+    }
     const preferred = selectableAccounts.find((a) => a.id === defaultAccountId) ?? selectableAccounts[0];
-    return preferred ? String(preferred.id) : "";
+    return proposalToFormValues({}, { today, accountId: preferred?.id ?? null });
   });
-  const [categoryId, setCategoryId] = useState(transaction?.categoryId ? String(transaction.categoryId) : "");
-  const [note, setNote] = useState(transaction?.note ?? "");
-  const [errors, setErrors] = useState<Errors>({});
+  const [errors, setErrors] = useState<TransactionFormErrors>({});
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -101,62 +84,31 @@ export function TransactionDialog({
     if (open) amountRef.current?.focus();
   }, [open]);
 
-  const categoryOptions = categories
-    .filter((c) => c.kind === kind || String(c.id) === categoryId)
-    .map((c) => ({ value: c.id, label: c.name }));
-
-  function changeKind(next: Kind) {
-    setKind(next);
-    // Une catégorie de l'autre nature n'a plus de sens : on la retire.
-    const current = categories.find((c) => String(c.id) === categoryId);
-    if (current && current.kind !== next) setCategoryId("");
-  }
-
-  function validate(): { cents: number; accountId: number } | null {
-    const next: Errors = {};
-    const parsed = parseAmount(amount);
-    if (amount.trim() === "") next.amount = "Saisissez un montant.";
-    else if (parsed === null) next.amount = "Montant illisible. Exemple : 12,50.";
-    else if (parsed === 0) next.amount = "Le montant doit être supérieur à 0.";
-    else if (Math.abs(parsed) > 9_999_999_999) next.amount = "Montant trop élevé.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) next.date = "Choisissez une date valide.";
-    if (label.trim() === "") next.label = "Saisissez un libellé.";
-    else if (label.trim().length > 200) next.label = "200 caractères au maximum.";
-    if (accountId === "") next.account = "Choisissez un compte.";
-    if (note.length > 1000) next.note = "1 000 caractères au maximum.";
-    setErrors(next);
-    if (Object.keys(next).length > 0 || parsed === null) return null;
-    const abs = Math.abs(parsed);
-    return { cents: kind === "expense" ? -abs : abs, accountId: Number(accountId) };
-  }
-
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const valid = validate();
-    if (!valid) return;
+    const result = validateTransactionForm(values);
+    setErrors(result.ok ? {} : result.errors);
+    if (!result.ok) return;
     setSaving(true);
     try {
       const res = await fetch(editing ? `/api/transactions/${transaction.id}` : "/api/transactions", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId: valid.accountId,
-          categoryId: categoryId === "" ? null : Number(categoryId),
-          date,
-          amount: valid.cents,
-          label: label.trim(),
-          note: note.trim() === "" ? null : note.trim(),
-        }),
+        body: JSON.stringify(result.body),
       });
       if (!res.ok) {
-        toast.error("Enregistrement impossible", { description: await errorMessage(res) });
+        toast.error("Enregistrement impossible", {
+          description: await errorMessage(res),
+        });
         return;
       }
       toast.success(editing ? "Transaction modifiée" : "Transaction ajoutée");
       onClose();
       router.refresh();
     } catch {
-      toast.error("Enregistrement impossible", { description: "Le serveur est injoignable." });
+      toast.error("Enregistrement impossible", {
+        description: "Le serveur est injoignable.",
+      });
     } finally {
       setSaving(false);
     }
@@ -166,16 +118,22 @@ export function TransactionDialog({
     if (!transaction) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/transactions/${transaction.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/transactions/${transaction.id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) {
-        toast.error("Suppression impossible", { description: await errorMessage(res) });
+        toast.error("Suppression impossible", {
+          description: await errorMessage(res),
+        });
         return;
       }
       toast.success("Transaction supprimée");
       onClose();
       router.refresh();
     } catch {
-      toast.error("Suppression impossible", { description: "Le serveur est injoignable." });
+      toast.error("Suppression impossible", {
+        description: "Le serveur est injoignable.",
+      });
     } finally {
       setDeleting(false);
       setConfirmDelete(false);
@@ -222,121 +180,16 @@ export function TransactionDialog({
       title={editing ? "Modifier la transaction" : "Nouvelle transaction"}
       footer={footer}
     >
-      <form id={formId} onSubmit={submit} noValidate className="space-y-4">
-        <KindToggle value={kind} onChange={changeKind} />
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input
-            label="Montant"
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder="0,00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            error={errors.amount}
-            hint={errors.amount ? undefined : "En euros, sans signe"}
-            ref={amountRef}
-          />
-          <Input
-            label="Date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            error={errors.date}
-          />
-        </div>
-
-        <Input
-          label="Libellé"
-          autoComplete="off"
-          maxLength={200}
-          placeholder={kind === "expense" ? "Ex. Courses au marché" : "Ex. Salaire d'octobre"}
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          error={errors.label}
+      <form id={formId} onSubmit={submit} noValidate>
+        <TransactionFields
+          values={values}
+          onChange={setValues}
+          errors={errors}
+          accounts={selectableAccounts}
+          categories={categories}
+          amountRef={amountRef}
         />
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Select
-            label="Compte"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            options={selectableAccounts.map((a) => ({
-              value: a.id,
-              label: a.archived ? `${a.name} (archivé)` : a.name,
-            }))}
-            placeholder={selectableAccounts.length === 0 ? "Aucun compte" : undefined}
-            error={errors.account}
-          />
-          <Select
-            label="Catégorie"
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            options={categoryOptions}
-            placeholder="Sans catégorie"
-          />
-        </div>
-
-        <NoteField value={note} onChange={setNote} error={errors.note} />
       </form>
     </Dialog>
-  );
-}
-
-function KindToggle({ value, onChange }: { value: Kind; onChange: (k: Kind) => void }) {
-  const items: { kind: Kind; label: string }[] = [
-    { kind: "expense", label: "Dépense" },
-    { kind: "income", label: "Revenu" },
-  ];
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Type de transaction"
-      className="grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1"
-    >
-      {items.map((item) => {
-        const active = item.kind === value;
-        return (
-          <button
-            key={item.kind}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(item.kind)}
-            className={cn(
-              "h-8 rounded-md text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-              active ? "bg-surface text-fg shadow-[0_0_0_1px_var(--border)]" : "text-muted hover:text-fg",
-            )}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function NoteField({
-  value,
-  onChange,
-  error,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-}) {
-  const id = useId();
-  return (
-    <Field id={id} label="Note (facultatif)" error={error}>
-      <textarea
-        id={id}
-        rows={2}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy(id, undefined, error)}
-        className={textareaClasses}
-      />
-    </Field>
   );
 }

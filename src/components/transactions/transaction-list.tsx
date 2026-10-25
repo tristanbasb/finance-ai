@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, ReceiptText, SearchX, StickyNote, Upload } from "lucide-react";
 import { Amount } from "@/components/amount";
 import { CategoryIcon } from "@/components/category-icon";
+import { useQuickAdd } from "@/components/quick-add/quick-add-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -28,16 +29,6 @@ export type TransactionListProps = {
 
 type DialogState = { nonce: number; open: boolean; transaction: TransactionRow | null };
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
-  );
-}
-
 function groupByDay(rows: TransactionRow[]): { date: string; rows: TransactionRow[] }[] {
   const groups: { date: string; rows: TransactionRow[] }[] = [];
   for (const row of rows) {
@@ -61,23 +52,12 @@ export function TransactionList({
   const [dialog, setDialog] = useState<DialogState>({ nonce: 0, open: false, transaction: null });
   const [importState, setImportState] = useState({ nonce: 0, open: false });
 
-  const openAdd = () => setDialog((d) => ({ nonce: d.nonce + 1, open: true, transaction: null }));
+  // Ajout : la saisie rapide globale (même feuille que le raccourci « N »).
+  const { open: openAdd } = useQuickAdd();
   const openEdit = (transaction: TransactionRow) =>
     setDialog((d) => ({ nonce: d.nonce + 1, open: true, transaction }));
   const closeDialog = () => setDialog((d) => ({ ...d, open: false }));
   const openImport = () => setImportState((s) => ({ nonce: s.nonce + 1, open: true }));
-
-  // Raccourci « N » : nouvelle transaction, hors champ de saisie et hors dialogue ouvert.
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== "n" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-      if (isTypingTarget(e.target) || document.querySelector("dialog[open]")) return;
-      e.preventDefault();
-      openAdd();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   const { income, expenses } = useMemo(() => {
     let inc = 0;
@@ -107,7 +87,7 @@ export function TransactionList({
             <Upload aria-hidden />
             Importer
           </Button>
-          <Button onClick={openAdd} aria-keyshortcuts="N">
+          <Button onClick={() => openAdd()} aria-keyshortcuts="N">
             <Plus aria-hidden />
             Ajouter
             <kbd
@@ -147,9 +127,9 @@ export function TransactionList({
             description="Saisissez une opération ou importez un relevé bancaire au format CSV."
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={openAdd}>
+                <Button onClick={() => openAdd()}>
                   <Plus aria-hidden />
-                  Ajouter une transaction
+                  Ajouter une opération
                 </Button>
                 <Button variant="secondary" onClick={openImport}>
                   <Upload aria-hidden />

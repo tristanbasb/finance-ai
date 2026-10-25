@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { ChartPie } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { buttonClasses } from "@/components/ui/button";
+import { QuickAddButton } from "@/components/quick-add/quick-add-button";
 import { CategoryDonut, type DonutSlice } from "@/components/charts/category-donut";
 
 /** Dépenses du mois par catégorie (anneau + légende). */
@@ -20,9 +19,7 @@ export function SpendingCard({ slices, monthLabel }: { slices: DonutSlice[]; mon
             title="Aucune dépense ce mois-ci"
             description="Vos dépenses apparaîtront ici, réparties par catégorie."
             action={
-              <Link href="/transactions" className={buttonClasses({ variant: "secondary", size: "sm" })}>
-                Ajouter une transaction
-              </Link>
+              <QuickAddButton variant="secondary" size="sm" />
             }
           />
         ) : (
