@@ -14,6 +14,8 @@ export type QuickAddContextValue = {
    * directement la proposition modifiable ; sans montant, le formulaire prérempli.
    */
   open: (prefill?: Partial<Proposal>) => void;
+  /** Ouvre directement l'assistant d'import d'un relevé CSV. */
+  openImport: () => void;
 };
 
 const QuickAddContext = createContext<QuickAddContextValue | null>(null);
@@ -62,6 +64,8 @@ async function loadData(): Promise<QuickAddData> {
  * première ouverture, puis rechargés à l'ouverture suivant un ajout. Monte aussi l'assistant
  * d'import CSV, ouvert depuis le lien « Importer un relevé CSV » de la feuille.
  */
+const LOAD_ERROR = "Impossible de charger les comptes et les catégories. Vérifiez la connexion.";
+
 export function QuickAddProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [session, setSession] = useState<Session>({ nonce: 0, open: false });
@@ -71,15 +75,17 @@ export function QuickAddProvider({ children }: { children: ReactNode }) {
   const stale = useRef(true);
   const loading = useRef(false);
 
-  const load = useCallback(async () => {
-    if (loading.current) return;
+  const load = useCallback(async (): Promise<boolean> => {
+    if (loading.current) return true;
     loading.current = true;
     setLoadError(null);
     try {
       setData(await loadData());
       stale.current = false;
+      return true;
     } catch {
-      setLoadError("Impossible de charger les comptes et les catégories. Vérifiez la connexion.");
+      setLoadError(LOAD_ERROR);
+      return false;
     } finally {
       loading.current = false;
     }
@@ -102,10 +108,22 @@ export function QuickAddProvider({ children }: { children: ReactNode }) {
     router.refresh();
   }, [close, router]);
 
+  const openImport = useCallback(() => {
+    setImportState((s) => ({ nonce: s.nonce + 1, open: true }));
+    // L'assistant s'affiche dès que comptes et catégories sont chargés.
+    if (stale.current)
+      void load().then((ok) => {
+        if (!ok) {
+          setImportState((s) => ({ ...s, open: false }));
+          toast.error(LOAD_ERROR);
+        }
+      });
+  }, [load]);
+
   const onImport = useCallback(() => {
     close();
-    setImportState((s) => ({ nonce: s.nonce + 1, open: true }));
-  }, [close]);
+    openImport();
+  }, [close, openImport]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -117,7 +135,7 @@ export function QuickAddProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  const value = useMemo(() => ({ open }), [open]);
+  const value = useMemo(() => ({ open, openImport }), [open, openImport]);
 
   return (
     <QuickAddContext.Provider value={value}>

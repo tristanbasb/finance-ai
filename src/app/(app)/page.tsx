@@ -1,110 +1,73 @@
 import type { Metadata } from "next";
-import { ArrowDownLeft, ArrowUpRight, PiggyBank } from "lucide-react";
 import { getDb } from "@/lib/db";
 import { todayLocal } from "@/lib/dates";
-import { monthRange } from "@/lib/finance";
-import { formatEUR } from "@/lib/money";
-import { formatDateLong, formatMonth, formatPercent } from "@/lib/format";
+import { formatDateLong, formatMonth } from "@/lib/format";
+import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { latestProactive } from "@/lib/queries/messages";
 import { getOverview } from "@/lib/queries/overview";
 import { listSnapshots, recordSnapshot } from "@/lib/queries/snapshots";
-import { spendingByCategory } from "@/lib/queries/transactions";
-import { Amount } from "@/components/amount";
-import { AiInsightsCard } from "@/components/ai-insights-card";
-import { BudgetsCard } from "@/components/dashboard/budgets-card";
-import { KpiTile } from "@/components/dashboard/kpi-tile";
+import { BudgetStrip } from "@/components/dashboard/budget-strip";
+import { HomeHero } from "@/components/dashboard/home-hero";
 import { LatestMessageCard } from "@/components/dashboard/latest-message-card";
-import { NetWorthCard } from "@/components/dashboard/net-worth-card";
+import { MonthStats } from "@/components/dashboard/month-stats";
+import { OnboardingCard } from "@/components/dashboard/onboarding-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
-import { SpendingCard } from "@/components/dashboard/spending-card";
-import { WelcomeCard } from "@/components/dashboard/welcome-card";
+import { HeaderTitle } from "@/components/shell/header-title";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "Tableau de bord" };
+export const metadata: Metadata = { title: "Accueil" };
 
-export default function DashboardPage() {
+export default function HomePage() {
   const db = getDb();
   const today = todayLocal();
-  const month = today.slice(0, 7);
-  const monthLabel = formatMonth(month);
 
   recordSnapshot(db, today);
   const overview = getOverview(db, today);
-  const { start, end } = monthRange(month);
-  const slices = spendingByCategory(db, start, end).map((s) => ({
-    key: String(s.categoryId ?? "none"),
-    name: s.name,
-    color: s.color,
-    value: s.total,
+  const points = listSnapshots(db, 90).map((s) => ({
+    date: s.date,
+    netWorth: s.netWorth,
   }));
   const latestMessage = latestProactive(db);
-  const points = listSnapshots(db, 90).map((s) => ({ date: s.date, netWorth: s.netWorth }));
-
-  const { income, expenses } = overview.month;
-  const saved = income + expenses;
+  const fresh = overview.recent.length === 0;
+  const hasAccounts = fresh && listAccountsWithBalances(db).some((a) => !a.archived);
 
   return (
-    <div className="space-y-4 sm:space-y-5">
-      <header className="mb-6 space-y-1 sm:mb-8">
-        <p className="text-[13px] text-muted first-letter:uppercase">{formatDateLong(today)}</p>
-        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-fg sm:text-[28px]">
-          Tableau de bord
-        </h1>
+    // Conteneur de requêtes : la grille suit la largeur réelle du contenu (colonne Claude ouverte ou non).
+    <div className="@container">
+      <header className="mb-5 space-y-1 md:mb-7">
+        <p className="text-[13px] font-medium text-muted first-letter:uppercase">{formatDateLong(today)}</p>
+        {/* Sur téléphone, l'en-tête de l'application salue déjà : titre réservé aux lecteurs d'écran. */}
+        <HeaderTitle
+          as="h1"
+          className="sr-only text-2xl font-bold tracking-[-0.025em] text-fg md:not-sr-only md:text-[28px]"
+        />
       </header>
 
-      <LatestMessageCard message={latestMessage} />
+      {fresh && <OnboardingCard hasAccounts={hasAccounts} className="mb-5 sm:mb-6" />}
 
-      {overview.recent.length === 0 && <WelcomeCard />}
-
-      <section aria-label="Vue d'ensemble" className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
-        <NetWorthCard
-          className="lg:col-span-2"
+      <div className="grid grid-cols-1 gap-5 sm:gap-6 @2xl:grid-cols-12">
+        <HomeHero
           netWorth={overview.netWorth}
           cash={overview.cash}
           investments={overview.investments}
           points={points}
+          className="@2xl:col-span-7 @2xl:col-start-1 @2xl:row-start-1 @5xl:col-span-8"
         />
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-1">
-          <KpiTile
-            label="Revenus du mois"
-            icon={ArrowDownLeft}
-            value={<Amount cents={income} tone={income > 0 ? "signed" : "plain"} />}
-            caption="Entrées depuis le 1er"
-          />
-          <KpiTile
-            label="Dépenses du mois"
-            icon={ArrowUpRight}
-            value={<Amount cents={Math.abs(expenses)} />}
-            caption="Sorties depuis le 1er"
-          />
-          <KpiTile
-            className="col-span-2 sm:col-span-1"
-            label="Taux d'épargne"
-            icon={PiggyBank}
-            value={income > 0 ? formatPercent(overview.savingsRate) : "—"}
-            caption={
-              income <= 0
-                ? "Aucun revenu ce mois-ci"
-                : saved >= 0
-                  ? `${formatEUR(saved)} mis de côté`
-                  : `${formatEUR(-saved)} de plus que vos revenus`
-            }
-          />
-        </div>
-      </section>
-
-      <section aria-label="Dépenses et budgets" className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
-        <SpendingCard slices={slices} monthLabel={monthLabel} />
-        <BudgetsCard budgets={overview.budgets} monthLabel={monthLabel} />
-      </section>
-
-      <section aria-label="Activité" className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <RecentTransactions transactions={overview.recent} />
-        </div>
-        <AiInsightsCard month={month} monthLabel={monthLabel} />
-      </section>
+        <LatestMessageCard
+          message={latestMessage}
+          className="@2xl:col-span-7 @2xl:col-start-1 @2xl:row-start-2 @5xl:col-span-8"
+        />
+        <MonthStats
+          income={overview.month.income}
+          expenses={overview.month.expenses}
+          savingsRate={overview.savingsRate}
+          monthLabel={formatMonth(today)}
+          className="@2xl:col-span-5 @2xl:col-start-8 @2xl:row-span-2 @2xl:row-start-1 @5xl:col-span-4 @5xl:col-start-9"
+        />
+        <BudgetStrip budgets={overview.budgets} className="min-w-0 @2xl:col-span-12" />
+        {!fresh && <RecentTransactions transactions={overview.recent} className="@2xl:col-span-12" />}
+      </div>
     </div>
   );
 }

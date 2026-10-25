@@ -23,9 +23,9 @@ function useLocalHour(): number | null {
 /**
  * Titre de l'en-tête : salutation selon l'heure locale sur l'accueil, nom de la rubrique ailleurs.
  * Au chargement complet, un script en ligne pose la salutation avant l'affichage (le serveur ne
- * connaît pas l'heure du navigateur) ; React prend le relais ensuite.
+ * connaît pas l'heure du navigateur) ; React prend le relais ensuite.  : titre de page.
  */
-export function HeaderTitle({ className }: { className?: string }) {
+export function HeaderTitle({ className, as: Tag = "p" }: { className?: string; as?: "p" | "h1" }) {
   const pathname = usePathname();
   const hour = useLocalHour();
   const id = useId();
@@ -34,9 +34,9 @@ export function HeaderTitle({ className }: { className?: string }) {
 
   return (
     <>
-      <p id={id} suppressHydrationWarning className={cn("truncate", className)}>
+      <Tag id={id} suppressHydrationWarning className={cn("truncate", className)}>
         {title}
-      </p>
+      </Tag>
       {isHome && hour === null && (
         <script
           // Exécuté au rendu serveur seulement ; inerte côté client (pas d'avertissement React).
