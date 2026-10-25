@@ -23,10 +23,11 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
 
 - **Accueil** : patrimoine net et son évolution, dernier message de Claude, revenus, dépenses
   et taux d'épargne du mois, budgets en un coup d'œil, dernières opérations.
-- **Saisie rapide en phrase libre** : touchez « + » et écrivez comme vous parlez
-  (« déjeuner au Petit Bistrot 18,50 € hier ») ; Claude propose montant, catégorie, date et
-  compte, vous vérifiez puis ajoutez. Un formulaire classique reste disponible, et sans clé API
-  la saisie se fait directement dans le formulaire.
+- **Saisie rapide en phrase libre** : utilisez le bouton « + » (« Ajouter » sur ordinateur) et
+  écrivez comme vous parlez (« déjeuner au Petit Bistrot 18,50 € hier ») ; Claude propose
+  montant, catégorie, date et compte, vous vérifiez puis ajoutez. Un formulaire classique reste
+  disponible, et sans clé API la saisie se fait directement dans le formulaire. Les dates
+  relatives (« hier ») suivent le fuseau du serveur (`TZ`, `Europe/Paris` par défaut).
 - **Activité** : opérations groupées par jour, recherche, filtres en pastilles (mois, compte,
   catégorie), **import CSV** de relevés bancaires (séparateurs `;`/`,`, dates FR/ISO, montants
   `1 234,56`), catégorisation automatique par l'IA (optionnelle).
@@ -45,8 +46,8 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
   [Assistant proactif](#assistant-proactif).
 - **Telegram** (optionnel) : recevez les alertes et discutez avec l'assistant depuis votre
   téléphone, via un bot privé — voir [Telegram](#telegram).
-- **Réglages** : comptes, catégories et budgets, modèle de l'IA, notifications, Telegram,
-  export JSON complet.
+- **Réglages** : Comptes, Catégories (et budgets), Assistant IA (modèle), Notifications,
+  Telegram, Données (export JSON complet) et Sécurité.
 - Interface en français, en euros, pensée pour le mobile comme pour l'ordinateur, thème clair
   et sombre, navigation au clavier.
 - Protégé par mot de passe, données stockées dans un simple fichier SQLite.
