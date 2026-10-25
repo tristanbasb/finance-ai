@@ -156,15 +156,18 @@ l'assistant depuis votre téléphone — la conversation est la même que dans l
    étapes : il vous donne un **token**.
 2. Ajoutez-le dans `.env` : `TELEGRAM_BOT_TOKEN=<token>` (ou répondez à la question de
    `./install.sh`).
-3. Appliquez : `./update.sh --force` (ou `docker compose up -d`).
+3. Appliquez : `docker compose up -d` (ou `./update.sh --force`, qui sauvegarde la base et
+   reconstruit l'image au passage).
 4. Dans **Réglages → Telegram**, demandez un code de liaison à 6 chiffres, puis envoyez
    `/start <code>` à votre bot.
 
 Commandes : `/nouveau` (nouvelle conversation), `/bilan` (bilan du moment), `/modele`
 (voir ou changer de modèle), `/aide`. Tout autre message est une question pour l'assistant.
 
-**Confidentialité** : seul le compte Telegram que vous avez lié est écouté, le bot ignore tous
-les autres. Le token n'est jamais affiché dans l'application. Les messages que Telegram a
+**Confidentialité** : seul le compte Telegram que vous avez lié peut utiliser le bot ; tout
+autre compte reçoit seulement « Ce bot est privé. », sans aucune donnée. Les alertes, bilans et
+réponses envoyés sur Telegram transitent par les serveurs de Telegram (les conversations avec
+un bot ne sont pas chiffrées de bout en bout). Le token n'est jamais affiché dans l'application. Les messages que Telegram a
 gardés pendant que le serveur était arrêté sont traités au redémarrage. Après 5 codes erronés,
 la liaison est suspendue 10 minutes.
 

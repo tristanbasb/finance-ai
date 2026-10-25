@@ -161,7 +161,7 @@ create_env() {
   if [ -f .env ]; then
     ok "Fichier .env existant conservé (non modifié)."
     if [ -z "$(env_get TELEGRAM_BOT_TOKEN)" ]; then
-      info "Telegram : pour recevoir les alertes, ajoutez TELEGRAM_BOT_TOKEN=<jeton> dans .env puis lancez ./update.sh --force."
+      info "Telegram : pour recevoir les alertes, ajoutez TELEGRAM_BOT_TOKEN=<jeton> dans .env puis lancez docker compose up -d."
     fi
     return 0
   fi

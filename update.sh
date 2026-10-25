@@ -116,7 +116,7 @@ main() {
   printf '\n'
   ok "$(bold "Mise à jour terminée") ($(git rev-parse --short HEAD))."
   if [ -z "$(env_get TELEGRAM_BOT_TOKEN)" ]; then
-    info "Astuce : ajoutez TELEGRAM_BOT_TOKEN dans .env pour recevoir les alertes sur Telegram."
+    info "Astuce : ajoutez TELEGRAM_BOT_TOKEN dans .env puis lancez docker compose up -d pour recevoir les alertes sur Telegram."
   fi
 }
 
