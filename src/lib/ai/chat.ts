@@ -11,21 +11,12 @@ export { encodeSse, type ChatEvent };
 
 export const MAX_TOOL_ITERATIONS = 8;
 
+/** Corps de `POST /api/ai/chat` : le nouveau message de l'utilisateur. */
 export const chatRequest = z.object({
-  messages: z
-    .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().max(8000),
-      }),
-    )
-    .min(1)
-    .max(50)
-    .refine((m) => m[m.length - 1]?.role === "user", "Le dernier message doit venir de l'utilisateur")
-    .refine((m) => m[m.length - 1]?.content.trim() !== "", "Le dernier message est vide"),
+  content: z.string().trim().min(1, "Le message est vide").max(8000),
 });
 
-export type ChatMessage = z.infer<typeof chatRequest>["messages"][number];
+export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 // Partie stable du prompt système (mise en cache avec les outils, qui la précèdent).
 const SYSTEM_PROMPT = `Tu es l'assistant financier personnel intégré à « Finance AI », une application auto-hébergée de suivi de finances personnelles utilisée par une seule personne. Tu réponds toujours en français, en tutoyant ou vouvoyant comme l'utilisateur (vouvoiement par défaut).
@@ -33,6 +24,7 @@ const SYSTEM_PROMPT = `Tu es l'assistant financier personnel intégré à « Fin
 Contexte :
 - La devise est l'euro (€). Les outils renvoient des montants en euros ; dans les transactions, les dépenses sont négatives et les revenus positifs.
 - Tu consultes les données de l'utilisateur en lecture seule grâce aux outils : vue d'ensemble et budgets, transactions, dépenses par catégorie, investissements, objectifs d'épargne. Tu ne peux rien modifier ; si l'utilisateur te le demande, indique-lui où le faire dans l'application.
+- Les messages peuvent venir de l'application ou de Telegram (pour Telegram, réponds plus brièvement et sans tableaux). La conversation peut contenir des alertes et bilans automatiques envoyés plus tôt : l'utilisateur peut te poser des questions à leur sujet.
 
 Règles :
 - Pour tout chiffre concernant la situation de l'utilisateur, appelle les outils plutôt que de supposer : n'invente jamais un montant. Si une donnée manque ou qu'un outil renvoie une erreur, dis-le simplement.

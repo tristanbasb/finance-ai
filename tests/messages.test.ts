@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
-import { addMessage, contextMessages, listMessages, markRead, unreadSummary } from "@/lib/queries/messages";
+import {
+  addMessage,
+  contextMessages,
+  listMessages,
+  markRead,
+  pendingUserMessages,
+  unreadSummary,
+} from "@/lib/queries/messages";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -164,5 +171,37 @@ describe("contextMessages", () => {
       { role: "user", content: "q" },
       { role: "assistant", content: "a1\n\na2" },
     ]);
+  });
+});
+
+describe("messages en attente", () => {
+  it("deferIds : messages replacés en fin de contexte", () => {
+    const db = freshDb();
+    const q1 = user(db, "Q1", 1);
+    const q2 = user(db, "Q2", 2);
+    asst(db, "R1", 3);
+    expect(contextMessages(db, { deferIds: [q2.id] })).toEqual([
+      { role: "user", content: "Q1" },
+      { role: "assistant", content: "R1" },
+      { role: "user", content: "Q2" },
+    ]);
+    expect(q1.id).toBeLessThan(q2.id);
+  });
+
+  it("pendingUserMessages : après meta.replyTo de la dernière réponse chat, puis du divider", () => {
+    const db = freshDb();
+    const q1 = user(db, "Q1", 1);
+    expect(pendingUserMessages(db).map((m) => m.id)).toEqual([q1.id]);
+    const q2 = user(db, "Q2", 2);
+    addMessage(db, { role: "assistant", kind: "chat", content: "R1", source: "app", meta: { replyTo: q1.id }, now: 3 });
+    expect(pendingUserMessages(db).map((m) => m.id)).toEqual([q2.id]);
+    // Les alertes ne comptent pas comme réponse ; sans replyTo, l'id de la réponse fait foi.
+    addMessage(db, { role: "assistant", kind: "alert", content: "A", source: "system", now: 4 });
+    expect(pendingUserMessages(db).map((m) => m.id)).toEqual([q2.id]);
+    asst(db, "R2", 5);
+    expect(pendingUserMessages(db)).toEqual([]);
+    user(db, "Q3", 6);
+    divider(db, 7);
+    expect(pendingUserMessages(db)).toEqual([]);
   });
 });

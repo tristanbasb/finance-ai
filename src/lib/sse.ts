@@ -4,6 +4,7 @@
 export type ChatEvent =
   | { type: "text"; text: string }
   | { type: "tool"; name: string }
+  | { type: "saved"; id: number }
   | { type: "done" }
   | { type: "error"; error: string };
 
@@ -20,6 +21,8 @@ function isChatEvent(value: unknown): value is ChatEvent {
       return typeof v.text === "string";
     case "tool":
       return typeof v.name === "string";
+    case "saved":
+      return typeof v.id === "number";
     case "error":
       return typeof v.error === "string";
     case "done":

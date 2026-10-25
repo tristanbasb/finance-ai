@@ -104,7 +104,7 @@ describe("routes IA sans clé", () => {
         req("/api/ai/chat", {
           method: "POST",
           headers: json,
-          body: JSON.stringify({ messages: [{ role: "user", content: "Bonjour" }] }),
+          body: JSON.stringify({ content: "Bonjour" }),
         }),
       ),
       await categorizePOST(
@@ -397,16 +397,11 @@ describe("chat", () => {
     expect(decodeSse(`${first.rest}ng\n\n${text}`)).toEqual({ events: [{ type: "text", text: "a" }], rest: "" });
   });
 
-  it("valide la requête (1–50 messages, ≤ 8000 caractères, dernier = user)", () => {
-    const ok = { messages: [{ role: "user", content: "Salut" }] };
-    expect(chatRequest.safeParse(ok).success).toBe(true);
-    expect(chatRequest.safeParse({ messages: [] }).success).toBe(false);
-    expect(chatRequest.safeParse({ messages: [{ role: "assistant", content: "x" }] }).success).toBe(false);
-    expect(chatRequest.safeParse({ messages: [{ role: "user", content: "x".repeat(8001) }] }).success).toBe(false);
-    expect(
-      chatRequest.safeParse({ messages: Array.from({ length: 51 }, () => ({ role: "user", content: "x" })) }).success,
-    ).toBe(false);
-    expect(chatRequest.safeParse({ messages: [{ role: "system", content: "x" }] }).success).toBe(false);
+  it("valide la requête { content } (rognée, 1–8000 caractères)", () => {
+    expect(chatRequest.parse({ content: "  Salut " })).toEqual({ content: "Salut" });
+    expect(chatRequest.safeParse({ content: "   " }).success).toBe(false);
+    expect(chatRequest.safeParse({ content: "x".repeat(8001) }).success).toBe(false);
+    expect(chatRequest.safeParse({ messages: [{ role: "user", content: "x" }] }).success).toBe(false);
   });
 
   it("boucle d'outils : événements tool puis texte, résultats renvoyés au modèle", async () => {
@@ -523,7 +518,7 @@ describe("routes IA avec un client simulé", () => {
       req("/api/ai/chat", {
         method: "POST",
         headers: json,
-        body: JSON.stringify({ messages: [{ role: "user", content: "Salut" }] }),
+        body: JSON.stringify({ content: "Salut" }),
       }),
     );
     expect(res.headers.get("content-type")).toContain("text/event-stream");
@@ -543,7 +538,8 @@ describe("routes IA avec un client simulé", () => {
       if (done) break;
       rest += value;
     }
-    expect(decodeSse(rest).events).toEqual([{ type: "text", text: "Bonjour" }, { type: "done" }]);
+    const events = decodeSse(rest).events;
+    expect(events).toEqual([{ type: "text", text: "Bonjour" }, { type: "saved", id: expect.any(Number) }, { type: "done" }]);
     expect(vi.getTimerCount()).toBe(0);
     expect(params[0].cache_control).toEqual({ type: "ephemeral" });
   });

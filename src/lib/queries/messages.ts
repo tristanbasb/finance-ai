@@ -96,10 +96,17 @@ export function markRead(
   return db.update(messages).set({ readAt: now }).where(scope).run().changes;
 }
 
-/** Contexte envoyé à Claude : depuis le dernier divider, rôles fusionnés, tronqué par le début. */
+/**
+ * Contexte envoyé à Claude : depuis le dernier divider, rôles fusionnés, tronqué par le début.
+ * Les messages de `deferIds` (messages utilisateur en attente) sont placés en fin de contexte.
+ */
 export function contextMessages(
   db: Db,
-  { maxMessages = 40, maxChars = 30000 }: { maxMessages?: number; maxChars?: number } = {},
+  {
+    maxMessages = 40,
+    maxChars = 30000,
+    deferIds = [],
+  }: { maxMessages?: number; maxChars?: number; deferIds?: number[] } = {},
 ): { role: "user" | "assistant"; content: string }[] {
   const lastDivider = db
     .select({ id: messages.id })
@@ -114,6 +121,10 @@ export function contextMessages(
     .where(lastDivider ? gt(messages.id, lastDivider.id) : undefined)
     .orderBy(asc(messages.id))
     .all();
+  if (deferIds.length) {
+    const deferred = new Set(deferIds);
+    rows.sort((a, b) => Number(deferred.has(a.id)) - Number(deferred.has(b.id)) || a.id - b.id);
+  }
 
   const merged: { role: "user" | "assistant"; content: string }[] = [];
   for (const r of rows) {
@@ -138,4 +149,38 @@ export function contextMessages(
   const result = merged.slice(merged.length - kept);
   while (result.length && result[0].role !== "user") result.shift();
   return result;
+}
+
+/**
+ * Messages utilisateur (depuis le dernier divider) pas encore traités par une réponse `chat` :
+ * ceux dont l'id dépasse le `meta.replyTo` de la dernière réponse (à défaut, son id).
+ */
+export function pendingUserMessages(db: Db): Message[] {
+  const lastDivider = db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.role, "divider"))
+    .orderBy(desc(messages.id))
+    .limit(1)
+    .get();
+  const lastReplyRow = db
+    .select()
+    .from(messages)
+    .where(and(eq(messages.role, "assistant"), eq(messages.kind, "chat")))
+    .orderBy(desc(messages.id))
+    .limit(1)
+    .get();
+  let answered = lastDivider?.id ?? 0;
+  if (lastReplyRow) {
+    const replyTo = toMessage(lastReplyRow).meta?.replyTo;
+    answered = Math.max(answered, typeof replyTo === "number" ? replyTo : lastReplyRow.id);
+  }
+  return db
+    .select()
+    .from(messages)
+    .where(and(eq(messages.role, "user"), gt(messages.id, answered)))
+    .orderBy(asc(messages.id))
+    .all()
+    .map(toMessage)
+    .filter((m) => m.content.trim() !== "");
 }
