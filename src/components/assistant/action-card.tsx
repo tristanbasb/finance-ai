@@ -84,15 +84,22 @@ export function ActionCard({ action, now, onChanged }: { action: ActionView; now
       if (res.ok) {
         setOutcome({ kind: "undone" });
         toast.success("Action annulée", { description: action.summary });
+        // Données modifiées : seule une annulation réussie rafraîchit la page.
+        router.refresh();
       } else if (res.status === 409 || res.status === 404) {
         const why = res.status === 404 ? "Action introuvable." : await errorMessage(res);
-        setOutcome({ kind: "refused", reason: why });
-        toast.error("Annulation impossible", { description: why });
+        if (actionDisplayState({ undoneAt: null, undoable: false, reason: why }).state === "undone") {
+          // Déjà annulée ailleurs (Telegram par exemple) : le résultat voulu est atteint.
+          setOutcome({ kind: "undone" });
+          toast("Action déjà annulée", { description: action.summary });
+        } else {
+          setOutcome({ kind: "refused", reason: why });
+          toast.error("Annulation impossible", { description: why });
+        }
       } else {
         toast.error("Annulation impossible", { description: await errorMessage(res) });
         return;
       }
-      router.refresh();
       onChanged();
     } catch {
       toast.error("Annulation impossible", { description: "Le serveur ne répond pas. Réessayez." });
@@ -155,7 +162,7 @@ export function ActionCard({ action, now, onChanged }: { action: ActionView; now
 
         <div aria-live="polite" className="flex items-center">
           {display.state === "undoable" ? (
-            <Button variant="secondary" size="sm" onClick={() => void undo()} loading={pending} title={`Annulable ${undoUntil(action.createdAt, now)}`}>
+            <Button variant="secondary" size="sm" onClick={() => void undo()} loading={pending}>
               {!pending && <Undo2 aria-hidden />}
               {pending ? "Annulation…" : "Annuler"}
             </Button>
@@ -187,8 +194,8 @@ export function ActionCard({ action, now, onChanged }: { action: ActionView; now
         </p>
       )}
 
-      {open && (
-        <ul id={detailId} className="mt-2 ml-[2.375rem] space-y-1 border-l-2 border-border pl-3 text-[12px] leading-snug text-muted">
+      {action.items.length > 0 && (
+        <ul id={detailId} hidden={!open} className="mt-2 ml-[2.375rem] space-y-1 border-l-2 border-border pl-3 text-[12px] leading-snug text-muted">
           {action.items.map((item, i) => (
             <li key={i} className="break-words">
               {item}

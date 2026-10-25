@@ -11,6 +11,8 @@ import {
   threadActionIds,
   undoneActionId,
   undoUntil,
+  writeToggleReducer,
+  type WriteToggleState,
   type ActionStatus,
 } from "@/lib/ai-actions-ui";
 import { WRITE_TOOL_NAME_LIST } from "@/lib/ai/write-tool-names";
@@ -129,7 +131,7 @@ describe("actionTime / undoUntil", () => {
   });
 
   it("échéance d'annulation (24 h)", () => {
-    expect(undoUntil(new Date(2026, 9, 20, 14, 5).getTime(), now)).toBe("jusqu'à demain 14:05");
+    expect(undoUntil(new Date(2026, 9, 20, 14, 5).getTime(), now)).toBe("jusqu'à demain à 14:05");
     expect(undoUntil(new Date(2026, 9, 19, 16, 20).getTime(), now)).toBe("jusqu'à 16:20");
   });
 });
@@ -179,5 +181,32 @@ describe("actionSummaryText", () => {
     expect(actionSummaryText("Opération ajoutée : Pain −12,00 €", "Opération ajoutée")).toBe("Pain −12,00 €");
     expect(actionSummaryText("Budget « Courses » : 300,00 €", "Budget")).toBe("Budget « Courses » : 300,00 €");
     expect(actionSummaryText("Opération ajoutée : ", "Opération ajoutée")).toBe("Opération ajoutée : ");
+  });
+});
+
+describe("writeToggleReducer", () => {
+  const ready = (confirmed: boolean): WriteToggleState => ({ status: "ready", confirmed, shown: confirmed, saving: false });
+
+  it("chargement réussi ou échoué, puis nouvel essai", () => {
+    expect(writeToggleReducer({ status: "loading" }, { type: "loaded", enabled: false })).toEqual(ready(false));
+    expect(writeToggleReducer({ status: "loading" }, { type: "loadFailed" })).toEqual({ status: "error" });
+    expect(writeToggleReducer({ status: "error" }, { type: "retry" })).toEqual({ status: "loading" });
+  });
+
+  it("bascule optimiste, puis valeur confirmée", () => {
+    const s1 = writeToggleReducer(ready(true), { type: "toggle", next: false });
+    expect(s1).toEqual({ status: "ready", confirmed: true, shown: false, saving: true });
+    expect(writeToggleReducer(s1, { type: "saved", enabled: false })).toEqual(ready(false));
+  });
+
+  it("aucune bascule pendant un enregistrement", () => {
+    const s1 = writeToggleReducer(ready(true), { type: "toggle", next: false });
+    expect(writeToggleReducer(s1, { type: "toggle", next: true })).toBe(s1);
+    expect(writeToggleReducer({ status: "loading" }, { type: "toggle", next: true })).toEqual({ status: "loading" });
+  });
+
+  it("échec : retour à la dernière valeur confirmée par le serveur", () => {
+    const s1 = writeToggleReducer(ready(true), { type: "toggle", next: false });
+    expect(writeToggleReducer(s1, { type: "saveFailed" })).toEqual(ready(true));
   });
 });

@@ -200,7 +200,10 @@ function useActionViews(messages: ThreadMessage[], refreshTail: ThreadState["ref
     if (!key) return;
     const controller = new AbortController();
     fetchActions(idsRef.current, controller.signal).then(
-      (list) => setResult({ key, views: new Map(list.map((a) => [a.id, a])), error: false }),
+      (list) => {
+        // Lot périmé (clé changée entre-temps) : ne pas écraser des statuts plus récents.
+        if (!controller.signal.aborted) setResult({ key, views: new Map(list.map((a) => [a.id, a])), error: false });
+      },
       () => {
         if (!controller.signal.aborted) setResult((r) => ({ key, views: r.views, error: true }));
       },

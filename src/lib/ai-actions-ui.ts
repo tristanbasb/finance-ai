@@ -135,11 +135,11 @@ function sameDay(a: number, b: number): boolean {
   return new Date(a).toDateString() === new Date(b).toDateString();
 }
 
-/** Échéance d'annulation (24 h après l'action) : « jusqu'à 16:20 », « jusqu'à demain 14:05 ». */
+/** Échéance d'annulation (24 h après l'action) : « jusqu'à 16:20 », « jusqu'à demain à 14:05 ». */
 export function undoUntil(createdAt: number, now: number = Date.now()): string {
   const end = createdAt + UNDO_WINDOW_MS;
   const time = hourFormat.format(end);
-  return sameDay(end, now) ? `jusqu'à ${time}` : `jusqu'à demain ${time}`;
+  return sameDay(end, now) ? `jusqu'à ${time}` : `jusqu'à demain à ${time}`;
 }
 
 function isId(value: unknown): value is number {
@@ -179,4 +179,44 @@ export function actionIdBatches(ids: readonly number[]): number[][] {
 
 export function actionsUrl(ids: readonly number[]): string {
   return `/api/ai/actions?ids=${ids.join(",")}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Réglage « Autoriser Claude à modifier mes données »
+
+/**
+ * `confirmed` : dernière valeur confirmée par le serveur ; `shown` : valeur affichée (optimiste
+ * pendant un enregistrement). Une seule bascule à la fois.
+ */
+export type WriteToggleState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; confirmed: boolean; shown: boolean; saving: boolean };
+
+export type WriteToggleEvent =
+  | { type: "loaded"; enabled: boolean }
+  | { type: "loadFailed" }
+  | { type: "retry" }
+  | { type: "toggle"; next: boolean }
+  | { type: "saved"; enabled: boolean }
+  | { type: "saveFailed" };
+
+export function writeToggleReducer(state: WriteToggleState, event: WriteToggleEvent): WriteToggleState {
+  switch (event.type) {
+    case "loaded":
+      return { status: "ready", confirmed: event.enabled, shown: event.enabled, saving: false };
+    case "loadFailed":
+      return { status: "error" };
+    case "retry":
+      return state.status === "error" ? { status: "loading" } : state;
+    case "toggle":
+      if (state.status !== "ready" || state.saving) return state;
+      return { ...state, shown: event.next, saving: true };
+    case "saved":
+      if (state.status !== "ready") return state;
+      return { status: "ready", confirmed: event.enabled, shown: event.enabled, saving: false };
+    case "saveFailed":
+      if (state.status !== "ready") return state;
+      return { ...state, shown: state.confirmed, saving: false };
+  }
 }
