@@ -3,6 +3,7 @@ import { splitEUR } from "@/components/amount";
 import { netWorthVariation, sparkline, variationLabel, type NetWorthPoint } from "@/lib/home";
 import { cn } from "@/lib/cn";
 import { formatEUR } from "@/lib/money";
+import { HeroHalos } from "@/components/ui/hero-halos";
 
 const W = 320;
 const H = 64;
@@ -36,11 +37,7 @@ export function HomeHero({ netWorth, cash, investments, points, className }: Hom
         className,
       )}
     >
-      <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-white/10" />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-28 -left-10 size-56 rounded-full bg-white/[0.07]"
-      />
+      <HeroHalos second="left" />
 
       <div className="relative space-y-2">
         <h2 id="home-hero-title" className="text-[13px] font-semibold text-white">

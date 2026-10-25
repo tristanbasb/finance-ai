@@ -17,6 +17,7 @@ import { QuickAddButton } from "@/components/quick-add/quick-add-button";
 import { buttonClasses } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HeroHalos } from "@/components/ui/hero-halos";
 
 export const dynamic = "force-dynamic";
 
@@ -77,8 +78,7 @@ export default async function BudgetsPage({
         aria-label="Synthèse des budgets"
         className="relative overflow-hidden rounded-hero bg-brand-gradient p-6 text-white shadow-glow sm:p-8"
       >
-        <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-white/10" />
-        <span aria-hidden className="pointer-events-none absolute -bottom-24 right-24 size-56 rounded-full bg-white/[0.07]" />
+        <HeroHalos />
         <div className="relative space-y-4">
           {summary ? (
             <>

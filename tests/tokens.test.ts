@@ -92,18 +92,26 @@ describe("Chip teintée", () => {
 });
 
 describe("texte blanc sur la carte héros Patrimoine", () => {
-  // Calque sombre bg-black/20 (pastilles) sur l'extrémité la plus claire du dégradé, halo blanc 10 % inclus.
+  // Calque sombre bg-black/15 (pastilles) sur les extrémités du dégradé, halos blancs inclus.
   const mix = (hex: string, over: string, a: number) => {
     const p = (h: string) => [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
     const [x, y] = [p(hex), p(over)];
     return "#" + x.map((v, i) => Math.round(v * (1 - a) + y[i] * a).toString(16).padStart(2, "0")).join("");
   };
+  // Opacités des deux halos, lues dans le composant partagé par les cartes héros.
+  const halos = readFileSync(join(__dirname, "../src/components/ui/hero-halos.tsx"), "utf8");
+  const HALOS = [...halos.matchAll(/bg-white\/\[(0\.\d+)\]/g)].map((m) => Number(m[1]));
+  it("lit les deux halos", () => expect(HALOS).toHaveLength(2));
   for (const end of ["brand-from", "brand-to"]) {
     it(`blanc plein lisible sur ${end}, avec halo et pastille sombre`, () => {
       const base = resolve(light, end);
       expect(contrastRatio("#ffffff", base)).toBeGreaterThanOrEqual(4.5);
-      const haloPill = mix(mix(base, "#ffffff", 0.1), "#000000", 0.15);
+      const haloPill = mix(mix(base, "#ffffff", HALOS[0]), "#000000", 0.15);
       expect(contrastRatio("#ffffff", haloPill)).toBeGreaterThanOrEqual(4.5);
+    });
+    it(`blanc plein lisible sur ${end} là où les deux halos se chevauchent, sans pastille`, () => {
+      const both = HALOS.reduce((color, alpha) => mix(color, "#ffffff", alpha), resolve(light, end));
+      expect(contrastRatio("#ffffff", both)).toBeGreaterThanOrEqual(4.5);
     });
   }
 });

@@ -2,6 +2,7 @@ import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { splitEUR } from "@/components/amount";
 import { formatPercent, NARROW_NBSP } from "@/lib/format";
 import { formatEUR } from "@/lib/money";
+import { HeroHalos } from "@/components/ui/hero-halos";
 
 export type PatrimoineHeroProps = {
   /** Patrimoine net (centimes). */
@@ -32,9 +33,7 @@ export function PatrimoineHero({ netWorth, liquidities, savings, investments, pn
       aria-label="Patrimoine total"
       className="relative overflow-hidden rounded-hero bg-brand-gradient p-6 text-white shadow-glow sm:p-8"
     >
-      {/* Halos décoratifs. */}
-      <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-white/10" />
-      <span aria-hidden className="pointer-events-none absolute -bottom-24 right-24 size-56 rounded-full bg-white/[0.07]" />
+      <HeroHalos />
 
       <div className="relative space-y-1">
         <p className="text-[13px] font-semibold text-white">Patrimoine total</p>
