@@ -60,7 +60,7 @@ export const aiTools: Anthropic.Tool[] = [
     description:
       "Recherche des transactions (plus récentes d'abord). Tous les filtres sont optionnels et cumulables. " +
       "Renvoie le nombre total et la somme des transactions correspondantes (même au-delà de `limit`), puis la liste. " +
-      "Montants signés en euros : dépenses négatives, revenus positifs.",
+      "Montants signés en euros : dépenses négatives, revenus positifs. Chaque ligne porte son identifiant `id`.",
     input_schema: {
       type: "object",
       properties: {
@@ -110,7 +110,7 @@ export const aiTools: Anthropic.Tool[] = [
   },
 ];
 
-function firstIssue(err: z.ZodError): string {
+export function firstIssue(err: z.ZodError): string {
   const issue = err.issues[0];
   const path = issue?.path.join(".");
   return `Paramètres invalides${path ? ` (${path})` : ""} : ${issue?.message ?? "entrée refusée"}`;
@@ -135,7 +135,7 @@ function getOverviewTool(db: Db, today: string) {
     investments: eur(o.investments),
     accounts: listAccountsWithBalances(db)
       .filter((a) => !a.archived)
-      .map((a) => ({ name: a.name, type: a.type, balance: eur(a.balance), investments: eur(a.investmentsValue) })),
+      .map((a) => ({ id: a.id, name: a.name, type: a.type, balance: eur(a.balance), investments: eur(a.investmentsValue) })),
     current_month: {
       month: today.slice(0, 7),
       income: eur(o.month.income),
@@ -144,6 +144,7 @@ function getOverviewTool(db: Db, today: string) {
       savings_rate_pct: pct(o.savingsRate),
     },
     budgets: o.budgets.map((b) => ({
+      category_id: b.categoryId,
       category: b.name,
       budget: eur(b.budget),
       spent: eur(b.spent),
@@ -212,6 +213,9 @@ function searchTransactionsTool(db: Db, input: z.infer<typeof searchInput>) {
   const limit = input.limit ?? 50;
   const rows = db
     .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      categoryId: transactions.categoryId,
       date: transactions.date,
       label: transactions.label,
       amount: transactions.amount,
@@ -233,11 +237,14 @@ function searchTransactionsTool(db: Db, input: z.infer<typeof searchInput>) {
     total: eur(totals.total),
     truncated: totals.count > rows.length,
     transactions: rows.map((r) => ({
+      id: r.id,
       date: r.date,
       label: r.label,
       amount: eur(r.amount),
       category: r.category ?? UNCATEGORIZED,
+      category_id: r.categoryId,
       account: r.account,
+      account_id: r.accountId,
       ...(r.note ? { note: r.note } : {}),
     })),
   };
@@ -262,6 +269,7 @@ function spendingByCategoryTool(db: Db, input: z.infer<typeof period>, today: st
     categories: rows.map((r) => {
       const budget = month && r.categoryId !== null ? budgets.get(r.categoryId) : null;
       return {
+        category_id: r.categoryId,
         category: r.name,
         amount: eur(r.total),
         share_pct: totalExpenses > 0 ? pct(r.total / totalExpenses) : 0,
@@ -288,10 +296,12 @@ function getHoldingsTool(db: Db) {
     total_pnl: eur(value - cost),
     total_pnl_pct: cost === 0 ? 0 : pct((value - cost) / cost),
     holdings: list.map((h) => ({
+      id: h.id,
       symbol: h.symbol,
       name: h.name,
       type: h.assetType,
       account: accountNames.get(h.accountId)!,
+      account_id: h.accountId,
       quantity: h.quantity,
       unit_price: unitEur(h.price),
       price_source: h.priceSource,
@@ -315,6 +325,7 @@ function getGoalsTool(db: Db, today: string) {
       const current = account ? account.balance : g.currentAmount;
       const p = goalProgress({ target: g.targetAmount, current, deadline: g.deadline }, today);
       return {
+        id: g.id,
         name: g.name,
         target: eur(g.targetAmount),
         current: eur(current),
@@ -323,6 +334,7 @@ function getGoalsTool(db: Db, today: string) {
         deadline: g.deadline,
         monthly_needed: p.monthlyNeeded === null ? null : eur(p.monthlyNeeded),
         account: account?.name ?? null,
+        account_id: g.accountId,
       };
     }),
   };
