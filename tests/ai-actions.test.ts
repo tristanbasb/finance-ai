@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { actionStatus, attachActionsToMessage, recordAction, undoAction, type Change } from "@/lib/ai/actions";
-import { aiActions, transactions } from "@/lib/db/schema";
+import { aiActions, categories, goals, transactions } from "@/lib/db/schema";
 import { createDb, type Db } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
@@ -125,7 +125,7 @@ describe("undoAction", () => {
     const tx = addTx();
     db.delete(transactions).where(eq(transactions.id, tx.id)).run();
     // before référence un compte inexistant -> la clé étrangère fait échouer l'insertion
-    const bad = { ...tx, accountId: 9999 };
+    const bad = { ...tx, label: null };
     const created = addTx("Créée");
     const id = recordAction(db, {
       tool: "x",
@@ -141,5 +141,101 @@ describe("undoAction", () => {
     expect(txById(created.id)).toBeDefined();
     expect(txById(tx.id)).toBeUndefined();
     expect(actionStatus(db, id).undoneAt).toBeNull();
+  });
+
+  it("plusieurs changes sur la même ligne : création puis modification", () => {
+    const created = addTx("A", -1);
+    const after = db.update(transactions).set({ amount: -5 }).where(eq(transactions.id, created.id)).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [
+      { table: "transactions", id: created.id, before: null, after: created },
+      { table: "transactions", id: created.id, before: created, after },
+    ] });
+    expect(undoAction(db, id).ok).toBe(true);
+    expect(txById(created.id)).toBeUndefined();
+  });
+
+  it("modification puis modification", () => {
+    const b = addTx("A", -1);
+    const m1 = db.update(transactions).set({ amount: -2 }).where(eq(transactions.id, b.id)).returning().get();
+    const m2 = db.update(transactions).set({ amount: -3 }).where(eq(transactions.id, b.id)).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [
+      { table: "transactions", id: b.id, before: b, after: m1 },
+      { table: "transactions", id: b.id, before: m1, after: m2 },
+    ] });
+    expect(undoAction(db, id).ok).toBe(true);
+    expect(txById(b.id)).toEqual(b);
+  });
+
+  it("modification puis suppression", () => {
+    const b = addTx("A", -1);
+    const m1 = db.update(transactions).set({ amount: -2 }).where(eq(transactions.id, b.id)).returning().get();
+    db.delete(transactions).where(eq(transactions.id, b.id)).run();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [
+      { table: "transactions", id: b.id, before: b, after: m1 },
+      { table: "transactions", id: b.id, before: m1, after: null },
+    ] });
+    expect(undoAction(db, id).ok).toBe(true);
+    expect(txById(b.id)).toEqual(b);
+  });
+
+  it("création puis suppression : sans effet", () => {
+    const c = addTx("A", -1);
+    db.delete(transactions).where(eq(transactions.id, c.id)).run();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [
+      { table: "transactions", id: c.id, before: null, after: c },
+      { table: "transactions", id: c.id, before: c, after: null },
+    ] });
+    expect(undoAction(db, id).ok).toBe(true);
+    expect(txById(c.id)).toBeUndefined();
+  });
+
+  it("refuse d'annuler une catégorie créée utilisée par une autre transaction", () => {
+    const cat = db.insert(categories).values({ name: "Nouv", kind: "expense", color: "#fff", icon: "x" }).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [{ table: "categories", id: cat.id, before: null, after: cat }] });
+    const tx = db.insert(transactions).values({ accountId, categoryId: cat.id, date: "2026-10-01", amount: -1, label: "L" }).returning().get();
+    const st = actionStatus(db, id);
+    expect(st.undoable).toBe(false);
+    expect(st.reason).toBe("Modifié depuis : catégorie « Nouv » est utilisé par d'autres éléments.");
+    expect(txById(tx.id)?.categoryId).toBe(cat.id);
+  });
+
+  it("autorise l'annulation si les dépendants font partie de l'action", () => {
+    const cat = db.insert(categories).values({ name: "Nouv", kind: "expense", color: "#fff", icon: "x" }).returning().get();
+    const tx = db.insert(transactions).values({ accountId, categoryId: cat.id, date: "2026-10-01", amount: -1, label: "L" }).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [
+      { table: "categories", id: cat.id, before: null, after: cat },
+      { table: "transactions", id: tx.id, before: null, after: tx },
+    ] });
+    expect(undoAction(db, id).ok).toBe(true);
+    expect(txById(tx.id)).toBeUndefined();
+  });
+
+  it("refuse d'annuler un compte créé utilisé par un objectif", () => {
+    const acc = db.insert(accounts).values({ name: "Neuf", type: "savings" }).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [{ table: "accounts", id: acc.id, before: null, after: acc }] });
+    db.insert(goals).values({ name: "G", targetAmount: 100, accountId: acc.id }).run();
+    expect(actionStatus(db, id).undoable).toBe(false);
+  });
+
+  it("refuse de recréer une ligne dont le compte lié n'existe plus", () => {
+    const acc = db.insert(accounts).values({ name: "Tmp", type: "other" }).returning().get();
+    const tx = db.insert(transactions).values({ accountId: acc.id, date: "2026-10-01", amount: -1, label: "L" }).returning().get();
+    db.delete(transactions).where(eq(transactions.id, tx.id)).run();
+    db.delete(accounts).where(eq(accounts.id, acc.id)).run();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [{ table: "transactions", id: tx.id, before: tx, after: null }] });
+    expect(undoAction(db, id)).toEqual({ ok: false, reason: "Modifié depuis : le compte ou la catégorie liée n'existe plus." });
+  });
+
+  it("journal illisible", () => {
+    const bad = [
+      "not json",
+      JSON.stringify([{ table: "toString", id: 1, before: null, after: null }]),
+      JSON.stringify([{ table: "transactions", id: 1, before: null }]),
+      JSON.stringify([{ table: "transactions", id: 0, before: null, after: null }]),
+    ];
+    for (const changes of bad) {
+      const row = db.insert(aiActions).values({ tool: "x", summary: "s", changes }).returning().get();
+      expect(undoAction(db, row.id)).toEqual({ ok: false, reason: "Journal illisible : annulation impossible." });
+    }
   });
 });

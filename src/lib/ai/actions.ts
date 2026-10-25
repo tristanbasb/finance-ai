@@ -42,17 +42,36 @@ export function attachActionsToMessage(db: Db, actionIds: number[], messageId: n
   db.update(aiActions).set({ messageId }).where(inArray(aiActions.id, actionIds)).run();
 }
 
-function parseChanges(raw: string): Change[] {
+const isObj = (v: unknown): v is Row => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** Lecture stricte du journal ; null si illisible. */
+function parseChanges(raw: string): Change[] | null {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (c): c is Change =>
-        !!c && typeof c === "object" && typeof c.id === "number" && typeof c.table === "string" && c.table in TABLES,
-    );
+    if (!Array.isArray(parsed)) return null;
+    for (const c of parsed) {
+      if (!isObj(c)) return null;
+      if (typeof c.table !== "string" || !Object.hasOwn(TABLES, c.table)) return null;
+      if (!Number.isInteger(c.id) || (c.id as number) <= 0) return null;
+      for (const k of ["before", "after"]) {
+        if (!(k in c) || (c[k] !== null && !isObj(c[k]))) return null;
+      }
+    }
+    return parsed as Change[];
   } catch {
-    return [];
+    return null;
   }
+}
+
+/** Fusionne les changes par ligne : premier `before`, dernier `after` ; création puis suppression = rien. */
+function netChanges(changes: Change[]): Change[] {
+  const map = new Map<string, Change>();
+  for (const c of changes) {
+    const key = `${c.table}:${c.id}`;
+    const prev = map.get(key);
+    map.set(key, prev ? { ...prev, after: c.after } : { ...c });
+  }
+  return [...map.values()].filter((c) => c.before !== null || c.after !== null);
 }
 
 /** Libellé lisible d'une ligne, pour expliquer pourquoi l'annulation est refusée. */
@@ -65,23 +84,64 @@ function describeRow(change: Change): string {
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-function currentRow(db: Db, change: Change): Row | undefined {
-  const t = tableOf(change.table);
-  return db.select().from(t).where(eq(t.id, change.id)).get() as Row | undefined;
+function currentRow(db: Db, table: ChangeTable, id: number): Row | undefined {
+  const t = tableOf(table);
+  return db.select().from(t).where(eq(t.id, id)).get() as Row | undefined;
 }
 
-/** Première modification postérieure détectée parmi les changes, ou null. */
-function findConflict(db: Db, changes: Change[]): string | null {
-  for (const change of changes) {
-    const current = currentRow(db, change);
+/** Une ligne créée par l'action a-t-elle des dépendants extérieurs à l'action (ON DELETE SET NULL) ? */
+function hasForeignDependents(db: Db, change: Change, net: Change[]): boolean {
+  const own = (table: ChangeTable) => new Set(net.filter((c) => c.table === table).map((c) => c.id));
+  const outside = (rows: { id: number }[], table: ChangeTable) => {
+    const mine = own(table);
+    return rows.some((r) => !mine.has(r.id));
+  };
+  if (change.table === "categories") {
+    const rows = db.select({ id: transactions.id }).from(transactions).where(eq(transactions.categoryId, change.id)).all();
+    return outside(rows, "transactions");
+  }
+  if (change.table === "accounts") {
+    return (
+      outside(db.select({ id: transactions.id }).from(transactions).where(eq(transactions.accountId, change.id)).all(), "transactions") ||
+      outside(db.select({ id: holdings.id }).from(holdings).where(eq(holdings.accountId, change.id)).all(), "holdings") ||
+      outside(db.select({ id: goals.id }).from(goals).where(eq(goals.accountId, change.id)).all(), "goals")
+    );
+  }
+  return false;
+}
+
+/** La ligne existera-t-elle (déjà présente ou restaurée par cette annulation) ? */
+function willExist(db: Db, table: ChangeTable, id: number, net: Change[]): boolean {
+  const c = net.find((x) => x.table === table && x.id === id);
+  if (c) return c.before !== null;
+  return currentRow(db, table, id) !== undefined;
+}
+
+function missingReference(db: Db, change: Change, net: Change[]): boolean {
+  const b = change.before;
+  if (!b) return false;
+  const refs: [ChangeTable, unknown][] = [];
+  if (change.table === "transactions") refs.push(["accounts", b.accountId], ["categories", b.categoryId]);
+  if (change.table === "holdings" || change.table === "goals") refs.push(["accounts", b.accountId]);
+  return refs.some(([t, id]) => typeof id === "number" && !willExist(db, t, id, net));
+}
+
+/** Première raison de refus parmi les changes nets, ou null. */
+function findConflict(db: Db, net: Change[]): string | null {
+  for (const change of net) {
+    const current = currentRow(db, change.table, change.id);
     if (change.after === null) {
-      if (current) return describeRow(change);
-      continue;
+      if (current) return `${describeRow(change)}.`;
+    } else {
+      if (!current) return `${describeRow(change)}.`;
+      for (const key of Object.keys(change.after)) {
+        if (!same(change.after[key], current[key])) return `${describeRow(change)}.`;
+      }
+      if (change.before === null && hasForeignDependents(db, change, net)) {
+        return `${describeRow(change)} est utilisé par d'autres éléments.`;
+      }
     }
-    if (!current) return describeRow(change);
-    for (const key of Object.keys(change.after)) {
-      if (!same(change.after[key], current[key])) return describeRow(change);
-    }
+    if (missingReference(db, change, net)) return "le compte ou la catégorie liée n'existe plus.";
   }
   return null;
 }
@@ -101,12 +161,14 @@ export function actionStatus(db: Db, id: number, now = Date.now()): ActionStatus
   if (!row) {
     return { undoable: false, reason: "Action introuvable.", summary: "", undoneAt: null, createdAt: 0, tool: "", changes: [] };
   }
-  const changes = parseChanges(row.changes);
+  const parsed = parseChanges(row.changes);
+  const changes = parsed ?? [];
   const base = { summary: row.summary, undoneAt: row.undoneAt, createdAt: row.createdAt, tool: row.tool, changes };
   if (row.undoneAt !== null) return { ...base, undoable: false, reason: "Déjà annulée." };
   if (now - row.createdAt > DAY_MS) return { ...base, undoable: false, reason: "Plus de 24 h : annulation impossible." };
-  const conflict = findConflict(db, changes);
-  if (conflict) return { ...base, undoable: false, reason: `Modifié depuis : ${conflict}.` };
+  if (parsed === null) return { ...base, undoable: false, reason: "Journal illisible : annulation impossible." };
+  const conflict = findConflict(db, netChanges(changes));
+  if (conflict) return { ...base, undoable: false, reason: `Modifié depuis : ${conflict}` };
   return { ...base, undoable: true };
 }
 
@@ -115,7 +177,7 @@ export function undoAction(db: Db, id: number, now = Date.now()): { ok: true; su
   if (!status.undoable) return { ok: false, reason: status.reason ?? "Annulation impossible." };
   try {
     db.transaction((tx) => {
-      for (const change of [...status.changes].reverse()) {
+      for (const change of netChanges(status.changes).reverse()) {
         const t = tableOf(change.table);
         if (change.before === null) {
           tx.delete(t).where(eq(t.id, change.id)).run();
