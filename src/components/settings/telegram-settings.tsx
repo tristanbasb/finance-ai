@@ -259,7 +259,7 @@ export function TelegramSettings() {
                 <code className={codeClasses}>.env</code> du serveur.
               </li>
               <li>
-                Lancez <code className={codeClasses}>./update.sh --force</code> ou redémarrez le conteneur.
+                Lancez <code className={codeClasses}>docker compose up -d</code> pour appliquer la configuration.
               </li>
             </ol>
           </div>

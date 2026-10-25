@@ -33,4 +33,21 @@ describe("instrumentation", () => {
     await register();
     expect(state.order).toEqual(["baseline", "scheduler", "bot"]);
   });
+
+  it("échec de la référence initiale : journalisé, planificateur et bot démarrés quand même", async () => {
+    process.env.NEXT_RUNTIME = "nodejs";
+    delete process.env.NEXT_PHASE;
+    delete process.env.FINANCE_AI_DISABLE_JOBS;
+    state.db = createDb(":memory:");
+    state.order.length = 0;
+    const engine = await import("@/lib/alerts/engine");
+    vi.mocked(engine.baselineAlerts).mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await register();
+    expect(state.order).toEqual(["scheduler", "bot"]);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });

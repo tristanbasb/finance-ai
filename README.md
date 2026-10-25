@@ -165,7 +165,8 @@ Commandes : `/nouveau` (nouvelle conversation), `/bilan` (bilan du moment), `/mo
 (voir ou changer de modèle), `/aide`. Tout autre message est une question pour l'assistant.
 
 **Confidentialité** : seul le compte Telegram que vous avez lié peut utiliser le bot ; tout
-autre compte reçoit seulement « Ce bot est privé. », sans aucune donnée. Les alertes, bilans et
+autre compte ne reçoit que « Ce bot est privé. » ou la réponse à un code de liaison, jamais
+aucune donnée. Les alertes, bilans et
 réponses envoyés sur Telegram transitent par les serveurs de Telegram (les conversations avec
 un bot ne sont pas chiffrées de bout en bout). Le token n'est jamais affiché dans l'application. Les messages que Telegram a
 gardés pendant que le serveur était arrêté sont traités au redémarrage. Après 5 codes erronés,

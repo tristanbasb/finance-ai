@@ -70,8 +70,8 @@ export function AiStatus() {
               </li>
               <li>
                 Lancez{" "}
-                <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg">./update.sh</code> ou
-                redémarrez l&apos;application.
+                <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg">docker compose up -d</code>{" "}
+                pour appliquer la configuration.
               </li>
             </ol>
           </div>

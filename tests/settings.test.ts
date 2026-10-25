@@ -56,6 +56,12 @@ describe("réglages", () => {
     expect(alertPrefsSchema.parse({ unusualMinEur: 1 }).unusualMinEur).toBe(1);
   });
 
+  it("seuil < 1 déjà enregistré : ramené à 1, les autres réglages conservés", () => {
+    const db = freshDb();
+    setSetting(db, "alerts", { budget: false, unusualMinEur: 0 });
+    expect(alertPrefs(db)).toEqual({ ...DEFAULT_ALERT_PREFS, budget: false, unusualMinEur: 1 });
+  });
+
   it("réglage du modèle", () => {
     const db = freshDb();
     setModelSetting(db, "claude-opus-4");

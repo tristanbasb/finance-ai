@@ -11,8 +11,13 @@ export async function register() {
   // (échappement : dev/diagnostic sans bilans ni actualisation automatique des cours).
   if (process.env.NEXT_PHASE === "phase-production-build") return;
   // Une seule fois : objectifs déjà atteints journalisés sans message, avant toute alerte.
-  const { baselineAlerts } = await import("./lib/alerts/engine");
-  baselineAlerts(db);
+  // Un échec ne doit pas empêcher le planificateur et le bot de démarrer.
+  try {
+    const { baselineAlerts } = await import("./lib/alerts/engine");
+    baselineAlerts(db);
+  } catch (err) {
+    console.error("[alerts] référence initiale des alertes impossible :", err);
+  }
   if (process.env.FINANCE_AI_DISABLE_JOBS === "1") return;
   const { startScheduler } = await import("./lib/jobs/scheduler");
   startScheduler(db);

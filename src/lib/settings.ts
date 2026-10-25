@@ -48,8 +48,17 @@ export function deleteSetting(db: Db, key: string): void {
   db.delete(settings).where(eq(settings.key, key)).run();
 }
 
+/** Lecture seule : un seuil < 1 enregistré avant la règle « ≥ 1 € » est ramené à 1 (le PUT refuse < 1). */
+const storedAlertPrefsSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === "object" && typeof (raw as { unusualMinEur?: unknown }).unusualMinEur === "number") {
+    const v = raw as { unusualMinEur: number };
+    if (v.unusualMinEur < 1) return { ...v, unusualMinEur: 1 };
+  }
+  return raw;
+}, alertPrefsSchema);
+
 export function alertPrefs(db: Db): AlertPrefs {
-  return getSetting(db, "alerts", alertPrefsSchema, DEFAULT_ALERT_PREFS);
+  return getSetting(db, "alerts", storedAlertPrefsSchema as z.ZodType<AlertPrefs>, DEFAULT_ALERT_PREFS);
 }
 
 export function digestPrefs(db: Db): DigestPrefs {
