@@ -257,7 +257,7 @@ export async function sendToLinkedChat(ctx: BotContext, m: Message): Promise<voi
   if (m.role !== "assistant" || !m.content.trim()) return;
   const chatId = linkedChatId(ctx.db);
   if (!chatId) return;
-  const prefix = m.kind === "alert" ? "🔔 " : m.kind === "weekly" || m.kind === "monthly" ? "📊 " : "";
+  const prefix = m.kind === "alert" ? "Alerte : " : m.kind === "weekly" || m.kind === "monthly" ? "Bilan : " : "";
   await sendMarkdown(ctx.api, chatId, prefix + m.content);
 }
 

@@ -535,7 +535,7 @@ describe("startBot", () => {
       await dispatch(alert);
       const digest = addMessage(db, { role: "assistant", kind: "monthly", content: "Bilan", source: "system" });
       await dispatch(digest);
-      expect(sent.map((s) => s.text)).toEqual(["🔔 Budget <b>dépassé</b>", "📊 Bilan"]);
+      expect(sent.map((s) => s.text)).toEqual(["Alerte : Budget <b>dépassé</b>", "Bilan : Bilan"]);
       // Une seconde instance n'est pas démarrée (garde globalThis).
       const again = startBot(db, { token: TOKEN, api, sleep: async () => {} });
       again();
