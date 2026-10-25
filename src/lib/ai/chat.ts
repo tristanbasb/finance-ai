@@ -32,10 +32,17 @@ Règles :
 - Sois concis et structuré : phrases courtes, listes à puces ou numérotées brèves, montants au format français (1 234,56 €). Mets en **gras** les chiffres clés, avec parcimonie. N'utilise ni tableaux ni titres.
 - Tu fournis des informations générales et des pistes pédagogiques, pas un conseil financier personnalisé au sens réglementaire : ne recommande pas d'acheter ou de vendre un titre précis, et suggère un conseiller agréé pour les décisions importantes (placements, fiscalité, crédit).`;
 
-export function systemPrompt(today: string): Anthropic.TextBlockParam[] {
+/** Canal de lecture de la réponse : `telegram` ajoute une consigne de brièveté. */
+export type ChatChannel = "app" | "telegram";
+
+export const TELEGRAM_HINT =
+  "Cette réponse sera lue sur Telegram : sois bref (quelques phrases ou une courte liste), sans tableau.";
+
+export function systemPrompt(today: string, channel: ChatChannel = "app"): Anthropic.TextBlockParam[] {
   return [
     { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
     { type: "text", text: `Date du jour : ${formatDateLong(today)} — ${formatDateFull(today)} (${today}).` },
+    ...(channel === "telegram" ? [{ type: "text" as const, text: TELEGRAM_HINT }] : []),
   ];
 }
 
@@ -57,15 +64,17 @@ export async function* runChat({
   messages,
   signal,
   today = todayLocal(),
+  channel = "app",
 }: {
   ai: Ai;
   db: Db;
   messages: ChatMessage[];
   signal?: AbortSignal;
   today?: string;
+  channel?: ChatChannel;
 }): AsyncGenerator<ChatEvent> {
   const history = toApiMessages(messages);
-  const system = systemPrompt(today);
+  const system = systemPrompt(today, channel);
   let wroteText = false;
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {

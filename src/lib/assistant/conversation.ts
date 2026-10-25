@@ -1,7 +1,7 @@
 import { BadRequestError, ConflictError } from "@/lib/api";
 import type { Db } from "@/lib/db";
 import { isAbortError, isModelNotFound, type Ai } from "@/lib/ai/client";
-import { runChat } from "@/lib/ai/chat";
+import { runChat, type ChatChannel } from "@/lib/ai/chat";
 import {
   addMessage,
   contextMessages,
@@ -51,12 +51,15 @@ export function respond(
     signal,
     onEvent,
     today,
+    channel,
   }: {
     ai: Ai;
     source: "app" | "telegram";
     signal?: AbortSignal;
     onEvent?: (e: ChatEvent) => void;
     today?: string;
+    /** Canal de lecture (consigne de format dans le prompt) ; défaut : application. */
+    channel?: ChatChannel;
   },
 ): Promise<Message | null> {
   return withGenerationLock(async () => {
@@ -73,7 +76,7 @@ export function respond(
     let text = "";
     let aborted = false;
     try {
-      for await (const event of runChat({ ai, db, messages: context, signal, today })) {
+      for await (const event of runChat({ ai, db, messages: context, signal, today, channel })) {
         // `done` : génération terminée normalement, même si l'annulation arrive ensuite.
         if (event.type === "done") continue;
         if (signal?.aborted) {

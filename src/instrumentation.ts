@@ -7,10 +7,13 @@ export async function register() {
   runMigrations(db);
   seedDefaults(db);
 
-  // Pas de tâches de fond pendant `next build`. `FINANCE_AI_DISABLE_JOBS=1` les coupe aussi
+  // Pas de tâches de fond (planificateur, bot Telegram) pendant `next build`. `FINANCE_AI_DISABLE_JOBS=1` les coupe aussi
   // (échappement : dev/diagnostic sans bilans ni actualisation automatique des cours).
   if (process.env.NEXT_PHASE === "phase-production-build") return;
   if (process.env.FINANCE_AI_DISABLE_JOBS === "1") return;
   const { startScheduler } = await import("./lib/jobs/scheduler");
   startScheduler(db);
+  // Bot Telegram : sans effet si TELEGRAM_BOT_TOKEN est absent.
+  const { startBot } = await import("./lib/telegram/bot");
+  startBot(db);
 }
