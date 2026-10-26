@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { centsToInput } from "@/lib/amount-input";
 import { errorMessage } from "@/lib/http";
-import { parseAmount } from "@/lib/money";
+import { MAX_CENTS, parseAmount } from "@/lib/money";
 import { ACCOUNT_COLORS, ColorPicker } from "./color-picker";
 import { ACCOUNT_TYPE_LABELS, type AccountRow, type AccountType } from "./types";
 
@@ -17,8 +17,6 @@ const TYPE_OPTIONS = (Object.keys(ACCOUNT_TYPE_LABELS) as AccountType[]).map((va
   value,
   label: ACCOUNT_TYPE_LABELS[value],
 }));
-
-const MAX_CENTS = 99_999_999_999;
 
 type Errors = Partial<Record<"name" | "balance", string>>;
 

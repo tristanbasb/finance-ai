@@ -1,6 +1,9 @@
 // Montants (entiers en centimes, signés) et dates (YYYY-MM-DD).
 // Module pur, sans dépendance : utilisable côté client comme côté serveur.
 
+/** Plus grand montant saisissable, en centimes (limite des API : 999 999 999,99 €). */
+export const MAX_CENTS = 99_999_999_999;
+
 const eurFormatter = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
 
 /** Formate des centimes en euros à la française (ex. « 1 234,56 € »). */

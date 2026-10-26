@@ -2,10 +2,11 @@ import { z } from "zod";
 import { withErrors } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { canAfford, currentPeriod, forecastFor } from "@/lib/forecast";
+import { MAX_CENTS } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
-const price = z.coerce.number().int().min(1).max(99_999_999_999);
+const price = z.coerce.number().int().min(1).max(MAX_CENTS);
 
 /**
  * Prévision de fin de mois (centimes) : `{ checkingBalance, dueTotal, forecast, margin, items }`.

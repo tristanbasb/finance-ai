@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { ArrowDownLeft, ArrowUpRight, PiggyBank, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { ArrowDownLeft, ArrowUpRight, CalendarCheck, ChevronRight, PiggyBank, type LucideIcon } from "lucide-react";
 import { Amount } from "@/components/amount";
 import { cn } from "@/lib/cn";
 import { formatPercent } from "@/lib/format";
@@ -57,12 +58,57 @@ function StatTile({
   );
 }
 
-/** « Ce mois-ci » : revenus, dépenses et taux d'épargne du mois courant, en trois pastilles. */
+/** Prévision de fin de mois (centimes) : affichée seulement si au moins une récurrente existe. */
+export type MonthForecast = { forecast: number; dueTotal: number; margin: number };
+
+/** « Fin de mois prévue : Y € », lien vers Budgets où se trouvent le détail et les récurrentes. */
+function ForecastLine({ forecast, dueTotal, margin }: MonthForecast) {
+  const tone = forecast < 0 ? "danger" : forecast < margin ? "warning" : "positive";
+  return (
+    <Link
+      href="/budgets"
+      className={cn(
+        "group flex items-center gap-3 rounded-card border border-border bg-surface p-4 shadow-soft",
+        "transition-colors duration-150 hover:border-border-strong hover:bg-surface-2",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "inline-flex size-9 shrink-0 items-center justify-center rounded-full",
+          tone === "positive" && "bg-positive-soft text-positive",
+          tone === "warning" && "bg-warning-soft text-warning",
+          tone === "danger" && "bg-danger-soft text-danger",
+        )}
+      >
+        <CalendarCheck className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1 space-y-0.5">
+        <span className="block text-[13px] font-semibold text-fg">
+          Fin de mois prévue : <span className="num whitespace-nowrap text-[15px] font-bold">{formatEUR(forecast)}</span>
+        </span>
+        <span className="num block text-[12px] text-muted">
+          {dueTotal > 0
+            ? `dont ${formatEUR(dueTotal)} de récurrentes à venir`
+            : "Aucune récurrente encore à payer ce mois-ci"}
+        </span>
+      </span>
+      <ChevronRight aria-hidden className="size-4 shrink-0 text-subtle transition-colors group-hover:text-fg" />
+    </Link>
+  );
+}
+
+/**
+ * « Ce mois-ci » : revenus, dépenses et taux d'épargne du mois courant, en trois pastilles,
+ * puis la fin de mois prévue quand des dépenses récurrentes sont déclarées.
+ */
 export function MonthStats({
   income,
   expenses,
   savingsRate,
   monthLabel,
+  forecast,
   className,
 }: {
   income: number;
@@ -70,6 +116,7 @@ export function MonthStats({
   expenses: number;
   savingsRate: number;
   monthLabel: string;
+  forecast?: MonthForecast | null;
   className?: string;
 }) {
   const saved = income + expenses;
@@ -111,6 +158,7 @@ export function MonthStats({
           }
         />
       </dl>
+      {forecast && <ForecastLine {...forecast} />}
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ACCOUNT_TYPES, ASSET_TYPES, CATEGORY_KINDS, RECURRING_FREQUENCIES } from "@/lib/db/schema";
+import { MAX_CENTS } from "@/lib/money";
 
 // Pas de `.default()` ici : avec `.partial()` (PATCH) un défaut réécraserait la valeur existante.
 // Les valeurs par défaut sont portées par les colonnes SQLite.
@@ -49,7 +50,7 @@ export const transactionInput = z.object({
 
 const recurringShape = z.object({
   label: z.string().trim().min(1).max(80),
-  amount: z.number().int().min(1).max(99_999_999_999),
+  amount: z.number().int().min(1).max(MAX_CENTS),
   categoryId: id.nullable(),
   accountId: id,
   frequency: z.enum(RECURRING_FREQUENCIES),
@@ -68,7 +69,7 @@ export const recurringPatch = recurringShape.partial();
 /** Corps de `POST /api/recurring/[id]/pay` : `amount` en centimes positifs (la route le passe en dépense). */
 export const recurringPayInput = z.object({
   period: monthString,
-  amount: z.number().int().min(1).max(99_999_999_999),
+  amount: z.number().int().min(1).max(MAX_CENTS),
   date: isoDate,
   accountId: id,
 });

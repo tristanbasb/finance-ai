@@ -5,13 +5,19 @@ import { getDb } from "@/lib/db";
 import { todayLocal } from "@/lib/dates";
 import { budgetStatus, monthRange } from "@/lib/finance";
 import { parseMonthParam, type BudgetRowData } from "@/lib/budget-month";
+import { forecastFor } from "@/lib/forecast";
+import { outOfForecastHint } from "@/lib/forecast-ui";
 import { formatMonth, formatPercent } from "@/lib/format";
 import { formatEUR } from "@/lib/money";
+import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listCategories } from "@/lib/queries/categories";
+import { listRecurring } from "@/lib/queries/recurring";
 import { spendingByCategory } from "@/lib/queries/transactions";
 import { AiInsightsCard } from "@/components/ai-insights-card";
 import { BudgetList } from "@/components/budgets/budget-list";
 import { BudgetMonthNav } from "@/components/budgets/budget-month-nav";
+import { ForecastCard } from "@/components/budgets/forecast-card";
+import { RecurringMonth, type MonthRecurringRow } from "@/components/budgets/recurring-month";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { QuickAddButton } from "@/components/quick-add/quick-add-button";
 import { buttonClasses } from "@/components/ui/button";
@@ -39,7 +45,8 @@ export default async function BudgetsPage({
   const spentById = new Map(spending.filter((s) => s.categoryId !== null).map((s) => [s.categoryId as number, s.total]));
   const uncategorized = spending.find((s) => s.categoryId === null)?.total ?? 0;
 
-  const rows: BudgetRowData[] = listCategories(db)
+  const categories = listCategories(db);
+  const rows: BudgetRowData[] = categories
     .filter((c) => c.kind === "expense")
     .map((c) => ({
       id: c.id,
@@ -63,6 +70,25 @@ export default async function BudgetsPage({
   const overCount = budgeted.filter((r) => budgetStatus(r.spent, r.budget)?.level === "over").length;
   const summary = budgetStatus(totalSpent, totalBudget);
   const left = totalBudget - totalSpent;
+
+  // Prévision de fin de mois et récurrentes : seulement pour le mois en cours.
+  const isCurrentMonth = month === currentMonth;
+  const forecast = isCurrentMonth ? forecastFor(db, month) : null;
+  const hasRecurring = isCurrentMonth && listRecurring(db).length > 0;
+  const accounts = isCurrentMonth
+    ? listAccountsWithBalances(db).map((a) => ({ id: a.id, name: a.name, type: a.type, archived: a.archived }))
+    : [];
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const recurringRows: MonthRecurringRow[] = (forecast?.items ?? []).map((item) => {
+    const category = item.categoryId === null ? undefined : categoryById.get(item.categoryId);
+    return {
+      ...item,
+      categoryColor: category?.color ?? null,
+      categoryIcon: category?.icon ?? null,
+      hint: item.status === "due" && !item.inForecast ? outOfForecastHint(accountById.get(item.accountId)) : null,
+    };
+  });
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -125,6 +151,21 @@ export default async function BudgetsPage({
           )}
         </div>
       </section>
+
+      {forecast && (
+        <div className="@container">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 @2xl:grid-cols-2">
+            <ForecastCard
+              checkingBalance={forecast.checkingBalance}
+              dueTotal={forecast.dueTotal}
+              forecast={forecast.forecast}
+              margin={forecast.margin}
+              className="@2xl:self-start"
+            />
+            <RecurringMonth period={month} items={recurringRows} hasRecurring={hasRecurring} accounts={accounts} />
+          </div>
+        </div>
+      )}
 
       {/* Deux colonnes selon la largeur réelle du contenu (colonne Claude affichée ou non), pas celle de la fenêtre. */}
       <div className="@container">

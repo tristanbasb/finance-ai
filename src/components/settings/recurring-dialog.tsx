@@ -11,12 +11,10 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { centsToInput } from "@/lib/amount-input";
 import { errorMessage } from "@/lib/http";
-import { parseAmount } from "@/lib/money";
+import { MAX_CENTS, parseAmount } from "@/lib/money";
 import { defaultAccountId } from "@/lib/quick-add";
 import { FRENCH_MONTHS, type RecurringFrequency } from "@/lib/settings-ui";
 import type { AccountRow, CategoryRow } from "./types";
-
-const MAX_CENTS = 99_999_999_999;
 
 export type RecurringRow = {
   id: number;

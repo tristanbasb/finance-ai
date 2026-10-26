@@ -7,17 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Input } from "@/components/ui/input";
+import { controlClasses, describedBy, Field } from "@/components/ui/field";
 import { toast } from "@/components/ui/toast";
 import { centsToInput } from "@/lib/amount-input";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/http";
-import { formatEUR, parseAmount } from "@/lib/money";
+import { formatEUR, MAX_CENTS, parseAmount } from "@/lib/money";
 import { frequencyLabel } from "@/lib/settings-ui";
 import { RecurringDialog, type RecurringRow } from "./recurring-dialog";
 import type { AccountRow, CategoryRow } from "./types";
-
-const MAX_CENTS = 99_999_999_999;
 
 type DialogState = { nonce: number; open: boolean; recurring: RecurringRow | null };
 
@@ -141,13 +139,16 @@ export function RecurringManager({ items, categories, accounts, margin }: Recurr
 function MarginField({ initial }: { initial: number }) {
   const router = useRouter();
   const formId = useId();
+  const inputId = `${formId}-input`;
+  const hint = "Montant à garder en fin de mois quand vous vérifiez un achat.";
   const [value, setValue] = useState(centsToInput(initial));
   const [error, setError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const parsed = value.trim() === "" ? null : parseAmount(value);
+    if (value.trim() === "") return setError("Indiquez la marge.");
+    const parsed = parseAmount(value);
     if (parsed === null) return setError("Montant illisible. Exemple : 200 ou 150,50.");
     if (parsed < 0) return setError("La marge ne peut pas être négative.");
     if (parsed > MAX_CENTS) return setError("Montant trop élevé.");
@@ -186,23 +187,26 @@ function MarginField({ initial }: { initial: number }) {
         <ShieldCheck aria-hidden className="size-4 text-positive" />
         Marge de sécurité
       </h3>
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
-        <Input
-          label="Montant (€)"
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="200,00"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          error={error}
-          hint={error ? undefined : "Montant à garder en fin de mois quand vous vérifiez un achat."}
-          wrapperClassName="sm:max-w-xs sm:flex-1"
-        />
-        <Button type="submit" loading={saving} className="sm:mt-[26px]">
-          <Check aria-hidden />
-          Enregistrer
-        </Button>
-      </div>
+      {/* Libellé au-dessus, champ et bouton sur la même ligne, aide ou erreur en dessous : alignés sans décalage fixe. */}
+      <Field id={inputId} label="Montant (€)" error={error} hint={hint} className="mt-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            id={inputId}
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="200,00"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy(inputId, hint, error)}
+            className={cn(controlClasses, "sm:max-w-xs")}
+          />
+          <Button type="submit" loading={saving}>
+            <Check aria-hidden />
+            Enregistrer
+          </Button>
+        </div>
+      </Field>
     </form>
   );
 }

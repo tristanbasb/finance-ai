@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { getDb } from "@/lib/db";
 import { todayLocal } from "@/lib/dates";
+import { currentPeriod, forecastFor } from "@/lib/forecast";
 import { formatDateLong, formatMonth } from "@/lib/format";
 import { latestProactive } from "@/lib/queries/messages";
 import { getOverview } from "@/lib/queries/overview";
+import { listRecurring } from "@/lib/queries/recurring";
 import { listSnapshots, recordSnapshot } from "@/lib/queries/snapshots";
 import { BudgetStrip } from "@/components/dashboard/budget-strip";
 import { HomeHero } from "@/components/dashboard/home-hero";
@@ -29,6 +31,8 @@ export default function HomePage() {
   }));
   const latestMessage = latestProactive(db);
   const fresh = overview.recent.length === 0;
+  // Ligne « Fin de mois prévue » : seulement si des dépenses récurrentes sont déclarées.
+  const forecast = listRecurring(db).length > 0 ? forecastFor(db, currentPeriod(today)) : null;
 
   return (
     // Conteneur de requêtes : la grille suit la largeur réelle du contenu (colonne Claude ouverte ou non).
@@ -61,6 +65,7 @@ export default function HomePage() {
           expenses={overview.month.expenses}
           savingsRate={overview.savingsRate}
           monthLabel={formatMonth(today)}
+          forecast={forecast && { forecast: forecast.forecast, dueTotal: forecast.dueTotal, margin: forecast.margin }}
           className={cn(
             "@2xl:col-span-5 @2xl:col-start-8 @2xl:row-start-1 @5xl:col-span-4 @5xl:col-start-9",
             // À côté du héros et du dernier message de Claude quand il y en a un.
