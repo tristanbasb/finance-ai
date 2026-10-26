@@ -47,20 +47,33 @@ export const transactionInput = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
-export const recurringInput = z
-  .object({
-    label: z.string().trim().min(1).max(80),
-    amount: z.number().int().min(1).max(99_999_999_999),
-    categoryId: id.nullable(),
-    accountId: id,
-    frequency: z.enum(RECURRING_FREQUENCIES),
-    anchorMonth: z.number().int().min(1).max(12).nullable(),
-    active: z.boolean().optional(),
-  })
-  .refine((r) => (r.frequency === "monthly") === (r.anchorMonth === null), {
-    message: "Le mois de référence est requis sauf pour une récurrente mensuelle",
-    path: ["anchorMonth"],
-  });
+const recurringShape = z.object({
+  label: z.string().trim().min(1).max(80),
+  amount: z.number().int().min(1).max(99_999_999_999),
+  categoryId: id.nullable(),
+  accountId: id,
+  frequency: z.enum(RECURRING_FREQUENCIES),
+  anchorMonth: z.number().int().min(1).max(12).nullable(),
+  active: z.boolean().optional(),
+});
+
+export const recurringInput = recurringShape.refine((r) => (r.frequency === "monthly") === (r.anchorMonth === null), {
+  message: "Le mois de référence est requis sauf pour une récurrente mensuelle",
+  path: ["anchorMonth"],
+});
+
+/** PATCH : champs facultatifs ; la cohérence fréquence / mois de référence est revérifiée sur l'état fusionné. */
+export const recurringPatch = recurringShape.partial();
+
+/** Corps de `POST /api/recurring/[id]/pay` : `amount` en centimes positifs (la route le passe en dépense). */
+export const recurringPayInput = z.object({
+  period: monthString,
+  amount: z.number().int().min(1).max(99_999_999_999),
+  date: isoDate,
+  accountId: id,
+});
+
+export const recurringSkipInput = z.object({ period: monthString });
 
 export const goalInput = z.object({
   name,
@@ -115,6 +128,7 @@ export type AccountInput = z.infer<typeof accountInput>;
 export type CategoryInput = z.infer<typeof categoryInput>;
 export type TransactionInput = z.infer<typeof transactionInput>;
 export type RecurringInput = z.infer<typeof recurringInput>;
+export type RecurringPayInput = z.infer<typeof recurringPayInput>;
 export type GoalInput = z.infer<typeof goalInput>;
 export type HoldingInput = z.infer<typeof holdingInput>;
 export type ImportInput = z.infer<typeof importInput>;

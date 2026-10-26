@@ -73,7 +73,7 @@ export function listTransactions(db: Db, f: TransactionFilter = {}): Transaction
     .all();
 }
 
-export function createTransaction(db: Db, input: TransactionInput): Transaction {
+export function createTransaction(db: Pick<Db, "insert">, input: TransactionInput): Transaction {
   return db.insert(transactions).values(input).returning().get();
 }
 
