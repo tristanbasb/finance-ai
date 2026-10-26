@@ -34,7 +34,12 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
 - **Patrimoine** : comptes courants et d'épargne, objectifs avec progression et montant mensuel
   nécessaire, investissements (actions, ETF et cryptos avec **cours automatiques** Yahoo
   Finance et CoinGecko actualisés toutes les heures, actifs manuels, plus/moins-values,
-  répartition par type).
+  répartition par type) et **Actualités** des positions cotées : titres traduits en français
+  par Claude (titre d'origine tant qu'il n'est pas traduit, ou sans clé API), éditeur et
+  ancienneté, filtre par position, « Voir plus » ; le lien ouvre l'article chez l'éditeur.
+  Elles viennent de Yahoo Finance, récupérées toutes les heures de 7 h à 22 h (heure du
+  serveur, `TZ`) juste après les cours, et conservées 30 jours. Demandez à Claude « Quoi de neuf
+  sur mes actions ? ».
 - **Budgets** : dépenses du mois par catégorie, budget **modifiable sur place** (touchez le
   montant), mois précédents, et l'« Analyse IA » du mois.
 - **Claude** (API Claude) : une conversation **permanente**, dans une **colonne** à droite sur
@@ -200,7 +205,9 @@ Tout se règle dans **Réglages → Notifications** : types d'alertes, seuils, h
 Pour ne pas vous inonder quand vous importez un historique, les alertes ne concernent que le
 **mois en cours** (transactions des 35 derniers jours).
 
-Les cours sont actualisés automatiquement **toutes les heures**.
+Les cours sont actualisés automatiquement **toutes les heures**. Une alerte de variation
+d'une position cite jusqu'à 3 titres d'actualité des dernières 48 h sur cette position, dans
+l'application comme sur Telegram.
 
 ## Telegram
 
@@ -354,7 +361,8 @@ Non interactif : `FINANCE_AI_PASSWORD='…' ./scripts/set-password.sh`.
   - si vous activez **Telegram**, les messages (alertes, bilans, discussion) transitent par
     les serveurs de Telegram ;
   - l'actualisation des cours interroge Yahoo Finance et CoinGecko avec les **symboles** de
-    vos positions (jamais les quantités ni les montants).
+    vos positions (jamais les quantités ni les montants) ; Yahoo Finance fournit aussi les
+    actualités, et les **titres** des articles sont envoyés à Anthropic pour être traduits.
 - La clé API reste dans `.env` et n'est **jamais affichée** dans l'interface.
 
 ## Limites connues
