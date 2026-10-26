@@ -6,6 +6,7 @@ import { postAssistantMessage } from "@/lib/assistant/conversation";
 import type { Db } from "@/lib/db";
 import { holdings, jobRuns } from "@/lib/db/schema";
 import { todayLocal } from "@/lib/dates";
+import { isNewsHour, realNewsDeps, refreshNews, type NewsDeps } from "@/lib/news";
 import { refreshPrices, type PriceDeps } from "@/lib/prices";
 import { realPriceDeps } from "@/lib/prices/real-deps";
 import { recordSnapshot } from "@/lib/queries/snapshots";
@@ -18,6 +19,7 @@ export type TickDeps = {
   ai?: Ai | null;
   generate?: typeof generateDigest;
   prices?: PriceDeps;
+  news?: NewsDeps;
 };
 
 /** Réclame atomiquement (job, période) : vrai si cette période n'était pas déjà réclamée. */
@@ -113,6 +115,13 @@ async function runPrices(db: Db, now: Date, deps: TickDeps): Promise<void> {
   if (!claimJob(db, "prices", hourKey(now), now.getTime())) return;
   await refreshPrices(db, deps.prices ?? realPriceDeps(), now, false);
   recordSnapshot(db, todayLocal(now));
+  if (isNewsHour(now)) {
+    try {
+      await refreshNews(db, deps.news ?? realNewsDeps(), now);
+    } catch (err) {
+      console.error("[jobs] actualités :", err);
+    }
+  }
   await runAlertChecks(db, { prices: true, goals: true });
 }
 

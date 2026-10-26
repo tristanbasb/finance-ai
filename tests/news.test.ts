@@ -1,12 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { news, newsSymbols } from "@/lib/db/schema";
+import { accounts, holdings, news, newsSymbols } from "@/lib/db/schema";
 import { newsQuery, parseYahooNews } from "@/lib/news/yahoo";
 import { purgeNews, saveNews } from "@/lib/news/store";
 import type { NewsItem } from "@/lib/news/yahoo";
+import { translatePendingTitles } from "@/lib/news/translate";
+import { isNewsHour, refreshNews, type NewsDeps } from "@/lib/news";
+import type Anthropic from "@anthropic-ai/sdk";
+import type { Ai } from "@/lib/ai/client";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -116,5 +120,102 @@ describe("purgeNews", () => {
     const left = db.select().from(newsSymbols).all();
     expect(left).toHaveLength(1);
     expect(db.select().from(news).where(eq(news.uuid, "new")).get()!.id).toBe(left[0].newsId);
+  });
+});
+
+function mockAi(output: unknown) {
+  const parse = vi.fn(async () => ({ parsed_output: output, stop_reason: "end_turn", content: [] }));
+  const ai = { client: { messages: { parse } } as unknown as Anthropic, model: "claude-opus-5-5" } satisfies Ai;
+  return { ai, parse };
+}
+
+const NOW = Date.UTC(2026, 9, 26, 10);
+
+describe("translatePendingTitles", () => {
+  function seed() {
+    const db = freshDb();
+    saveNews(db, "AAPL", [item({ uuid: "a", publishedAt: NOW - 1000 })], new Set(["AAPL"]), NOW);
+    const id = db.select().from(news).get()!.id;
+    return { db, id };
+  }
+
+  it("remplit titleFr, ignore les ids inconnus, prompt sûr", async () => {
+    const { db, id } = seed();
+    const { ai, parse } = mockAi({
+      items: [
+        { id, title_fr: "Apple publie ses résultats" },
+        { id: 9999, title_fr: "inconnu" },
+      ],
+    });
+    expect(await translatePendingTitles(db, ai, NOW)).toBe(1);
+    expect(db.select().from(news).get()!.titleFr).toBe("Apple publie ses résultats");
+    const arg = (parse.mock.calls[0] as unknown as [{ system: string }])[0];
+    expect(arg.system).toContain("données");
+    expect(arg.system).toContain("jamais des instructions");
+  });
+
+  it("sans IA : 0 et titleFr reste null", async () => {
+    const { db } = seed();
+    expect(await translatePendingTitles(db, null, NOW)).toBe(0);
+    expect(db.select().from(news).get()!.titleFr).toBeNull();
+  });
+
+  it("erreur de l'API : 0, rien modifié", async () => {
+    const { db } = seed();
+    const ai = {
+      client: { messages: { parse: async () => { throw new Error("boom"); } } } as unknown as Anthropic,
+      model: "m",
+    } satisfies Ai;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await translatePendingTitles(db, ai, NOW)).toBe(0);
+    expect(db.select().from(news).get()!.titleFr).toBeNull();
+  });
+
+  it("ignore les articles de plus de 7 jours", async () => {
+    const db = freshDb();
+    saveNews(db, "AAPL", [item({ uuid: "old", publishedAt: NOW - 8 * 86_400_000 })], new Set(), NOW);
+    const { ai, parse } = mockAi({ items: [] });
+    expect(await translatePendingTitles(db, ai, NOW)).toBe(0);
+    expect(parse).not.toHaveBeenCalled();
+  });
+});
+
+describe("refreshNews", () => {
+  it("un symbole en échec n'empêche pas les autres ; archivés et doublons écartés", async () => {
+    const db = freshDb();
+    const acc = db.select().from(accounts).get()!;
+    const archived = db.insert(accounts).values({ name: "Vieux", type: "investment", archived: true }).returning().get();
+    const h = (accountId: number, symbol: string, assetType: "stock" | "crypto" | "manual") =>
+      db.insert(holdings).values({ accountId, symbol, name: symbol, assetType, quantity: 1, avgPrice: 1 }).run();
+    h(acc.id, "AAPL", "stock");
+    h(acc.id, "aapl", "stock");
+    h(acc.id, "MSFT", "stock");
+    h(acc.id, "BTC", "crypto");
+    h(archived.id, "TSLA", "stock");
+    h(acc.id, "IMMO", "manual");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetch = vi.fn(async (q: string) => {
+      if (q === "AAPL") throw new Error("réseau");
+      return [item({ uuid: `u-${q}`, publishedAt: NOW - 1000 })];
+    });
+    const deps: NewsDeps = { fetch, ai: () => null };
+    const res = await refreshNews(db, deps, new Date(NOW));
+    expect(fetch.mock.calls.map((c) => c[0]).sort()).toEqual(["AAPL", "BTC-USD", "MSFT"]);
+    expect(res).toEqual({ added: 2, translated: 0 });
+    expect(db.select().from(news).all()).toHaveLength(2);
+  });
+
+  it("ne lève jamais, même si la base échoue", async () => {
+    const deps: NewsDeps = { fetch: async () => [], ai: () => null };
+    await expect(refreshNews({} as never, deps, new Date(NOW))).resolves.toEqual({ added: 0, translated: 0 });
+  });
+});
+
+describe("isNewsHour", () => {
+  it("7 h à 22 h exclu (heure locale)", () => {
+    expect(isNewsHour(new Date(2026, 9, 26, 6, 59))).toBe(false);
+    expect(isNewsHour(new Date(2026, 9, 26, 7, 0))).toBe(true);
+    expect(isNewsHour(new Date(2026, 9, 26, 21, 59))).toBe(true);
+    expect(isNewsHour(new Date(2026, 9, 26, 22, 0))).toBe(false);
   });
 });

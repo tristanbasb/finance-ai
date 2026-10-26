@@ -11,6 +11,7 @@ import { DEFAULT_DIGEST_PREFS, getModelSetting, getSetting, setModelSetting, set
 import Anthropic from "@anthropic-ai/sdk";
 import type { Ai } from "@/lib/ai/client";
 import type { PriceDeps } from "@/lib/prices";
+import type { NewsDeps } from "@/lib/news";
 import * as alerts from "@/lib/alerts/engine";
 import { GET as getDigests, PUT as putDigests } from "@/app/api/settings/digests/route";
 import { GET as getAlerts, PUT as putAlerts } from "@/app/api/settings/alerts/route";
@@ -222,16 +223,42 @@ describe("tick : cours horaires", () => {
     const db = freshDb();
     setSetting(db, "digests", { ...prefs, weekly: false, monthly: false });
     stock.mockClear();
-    await tick(db, mon(9, 0), { ai: null, prices: priceDeps() });
+    await tick(db, mon(9, 0), { ai: null, prices: priceDeps(), news: newsDeps() });
     expect(stock).not.toHaveBeenCalled(); // pas de position
     withHolding(db);
-    await tick(db, mon(9, 5), { ai: null, prices: priceDeps() });
-    await tick(db, mon(9, 40), { ai: null, prices: priceDeps() });
+    await tick(db, mon(9, 5), { ai: null, prices: priceDeps(), news: newsDeps() });
+    await tick(db, mon(9, 40), { ai: null, prices: priceDeps(), news: newsDeps() });
     expect(stock).toHaveBeenCalledTimes(1);
     expect(alerts.runAlertChecks).toHaveBeenCalledWith(db, { prices: true, goals: true });
-    await tick(db, mon(10, 1), { ai: null, prices: priceDeps() });
+    await tick(db, mon(10, 1), { ai: null, prices: priceDeps(), news: newsDeps() });
     expect(stock).toHaveBeenCalledTimes(2);
     expect(hourKey(mon(10, 1))).toBe("2026-10-26T10");
+  });
+
+  const newsDeps = (fetch = vi.fn(async () => [])): NewsDeps & { fetch: ReturnType<typeof vi.fn> } => ({
+    fetch,
+    ai: () => null,
+  });
+
+  it("actualités : pas à 23 h, oui à 10 h", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, weekly: false, monthly: false });
+    withHolding(db);
+    const news = newsDeps();
+    await tick(db, mon(23), { ai: null, prices: priceDeps(), news });
+    expect(news.fetch).not.toHaveBeenCalled();
+    await tick(db, mon(10), { ai: null, prices: priceDeps(), news });
+    expect(news.fetch).toHaveBeenCalledWith("AAPL");
+  });
+
+  it("actualités : un fetcher qui lève n'empêche pas les contrôles d'alertes", async () => {
+    const db = freshDb();
+    setSetting(db, "digests", { ...prefs, weekly: false, monthly: false });
+    withHolding(db);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const news = newsDeps(vi.fn(async () => { throw new Error("réseau"); }));
+    await tick(db, mon(10), { ai: null, prices: priceDeps(), news });
+    expect(alerts.runAlertChecks).toHaveBeenCalledWith(db, { prices: true, goals: true });
   });
 
   it("une erreur de cours ne bloque pas les bilans", async () => {
@@ -239,7 +266,7 @@ describe("tick : cours horaires", () => {
     withHolding(db);
     const generate = vi.fn(async () => "x");
     const prices: PriceDeps = { stock: async () => { throw new Error("réseau"); }, crypto: async () => new Map(), fx: async () => 1 };
-    await tick(db, mon(9), { ai: fakeAi, generate, prices });
+    await tick(db, mon(9), { ai: fakeAi, generate, prices, news: newsDeps() });
     expect(generate).toHaveBeenCalled();
   });
 });
