@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { getDb } from "@/lib/db";
 import { todayLocal } from "@/lib/dates";
 import { formatDateLong, formatMonth } from "@/lib/format";
-import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { latestProactive } from "@/lib/queries/messages";
 import { getOverview } from "@/lib/queries/overview";
 import { listSnapshots, recordSnapshot } from "@/lib/queries/snapshots";
@@ -10,9 +9,9 @@ import { BudgetStrip } from "@/components/dashboard/budget-strip";
 import { HomeHero } from "@/components/dashboard/home-hero";
 import { LatestMessageCard } from "@/components/dashboard/latest-message-card";
 import { MonthStats } from "@/components/dashboard/month-stats";
-import { OnboardingCard } from "@/components/dashboard/onboarding-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { HeaderTitle } from "@/components/shell/header-title";
+import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +29,6 @@ export default function HomePage() {
   }));
   const latestMessage = latestProactive(db);
   const fresh = overview.recent.length === 0;
-  const hasAccounts = fresh && listAccountsWithBalances(db).some((a) => !a.archived);
 
   return (
     // Conteneur de requêtes : la grille suit la largeur réelle du contenu (colonne Claude ouverte ou non).
@@ -44,8 +42,6 @@ export default function HomePage() {
         />
       </header>
 
-      {fresh && <OnboardingCard hasAccounts={hasAccounts} className="mb-5 sm:mb-6" />}
-
       <div className="grid grid-cols-1 gap-5 sm:gap-6 @2xl:grid-cols-12">
         <HomeHero
           netWorth={overview.netWorth}
@@ -54,16 +50,22 @@ export default function HomePage() {
           points={points}
           className="@2xl:col-span-7 @2xl:col-start-1 @2xl:row-start-1 @5xl:col-span-8"
         />
-        <LatestMessageCard
-          message={latestMessage}
-          className="@2xl:col-span-7 @2xl:col-start-1 @2xl:row-start-2 @5xl:col-span-8"
-        />
+        {latestMessage && (
+          <LatestMessageCard
+            message={latestMessage}
+            className="@2xl:col-span-7 @2xl:col-start-1 @2xl:row-start-2 @5xl:col-span-8"
+          />
+        )}
         <MonthStats
           income={overview.month.income}
           expenses={overview.month.expenses}
           savingsRate={overview.savingsRate}
           monthLabel={formatMonth(today)}
-          className="@2xl:col-span-5 @2xl:col-start-8 @2xl:row-span-2 @2xl:row-start-1 @5xl:col-span-4 @5xl:col-start-9"
+          className={cn(
+            "@2xl:col-span-5 @2xl:col-start-8 @2xl:row-start-1 @5xl:col-span-4 @5xl:col-start-9",
+            // À côté du héros et du dernier message de Claude quand il y en a un.
+            latestMessage && "@2xl:row-span-2",
+          )}
         />
         <BudgetStrip budgets={overview.budgets} className="min-w-0 @2xl:col-span-12" />
         {!fresh && <RecentTransactions transactions={overview.recent} className="@2xl:col-span-12" />}

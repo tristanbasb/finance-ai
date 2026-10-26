@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, MessageCircle, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAssistant } from "@/components/assistant/assistant-provider";
 import { KindIcon } from "@/components/assistant/thread";
@@ -10,11 +10,10 @@ import { cn } from "@/lib/cn";
 
 /**
  * « Dernier message de Claude » sur l'accueil : dernière alerte ou dernier bilan en carte teintée,
- * avec ouverture du fil sur ce message ; à défaut, une invitation à poser une question (panneau,
- * ou saisie de la colonne Claude si elle est affichée).
+ * avec ouverture du fil sur ce message (la carte n'est affichée que s'il y en a un).
  */
-export function LatestMessageCard({ message, className }: { message: ThreadMessage | null; className?: string }) {
-  const { openAt, setOpen, columnVisible, unread: unreadState } = useAssistant();
+export function LatestMessageCard({ message, className }: { message: ThreadMessage; className?: string }) {
+  const { openAt, unread: unreadState } = useAssistant();
   // Date relative calculée après l'hydratation (l'heure du serveur peut différer).
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -25,36 +24,6 @@ export function LatestMessageCard({ message, className }: { message: ThreadMessa
       clearInterval(i);
     };
   }, []);
-
-  // Colonne Claude affichée : la saisie y est déjà, on y place le curseur.
-  const ask = () => {
-    if (columnVisible) document.querySelector<HTMLElement>("[data-claude-column-frame] textarea")?.focus();
-    else setOpen(true);
-  };
-
-  if (!message) {
-    return (
-      <section aria-label="Assistant" className={cn("@container rounded-card bg-brand-soft p-4 sm:p-5", className)}>
-        <div className="flex flex-col gap-3 @md:flex-row @md:items-center">
-          <div className="flex min-w-0 flex-1 items-start gap-3 @md:items-center">
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white">
-              <Sparkles aria-hidden className="size-[18px]" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-fg">Posez une question à Claude</h2>
-              <p className="text-[13px] text-muted">
-                Sur vos dépenses, vos budgets ou votre épargne. Ses alertes et bilans s&apos;afficheront ici.
-              </p>
-            </div>
-          </div>
-          <Button variant="secondary" size="sm" onClick={ask} className="ml-12 self-start @md:ml-0 @md:self-auto">
-            <MessageCircle aria-hidden />
-            Écrire à Claude
-          </Button>
-        </div>
-      </section>
-    );
-  }
 
   // Lu depuis le rendu serveur (panneau, cloche) : la liste des non-lus fait foi une fois chargée.
   const unread =
