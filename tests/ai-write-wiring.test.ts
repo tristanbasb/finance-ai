@@ -140,6 +140,13 @@ describe("prompt système", () => {
     expect(write).toContain("24 h");
     expect(write).toMatch(/suppression en lot/);
   });
+
+  it("les actualités des positions figurent parmi les données consultables, avec ou sans écriture", () => {
+    expect(JSON.stringify(systemPrompt(TODAY, "app"))).toContain("objectifs d'épargne, actualités des positions");
+    expect(JSON.stringify(systemPrompt(TODAY, "app", { write: true }))).toContain(
+      "objectifs d'épargne, actualités des positions",
+    );
+  });
 });
 
 describe("runChat avec écriture", () => {

@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/http";
-import { NEWS_PAGE, displayTitle, hasMore, newsAge, updatedLabel } from "@/lib/news-ui";
+import { NEWS_EMPTY_HINT, NEWS_PAGE, displayTitle, hasMore, isHttpUrl, newsAge, updatedLabel } from "@/lib/news-ui";
 import type { NewsRow } from "@/lib/news/store";
 
 export type NewsCount = { symbol: string; name: string; count: number };
@@ -64,6 +64,8 @@ export function NewsSection({ initial, counts, lastFetch }: NewsSectionProps) {
   async function choose(next: string | null) {
     if (next === symbol) return;
     const id = ++request.current;
+    // État à restaurer si le chargement du filtre échoue.
+    const previous = { symbol, items, more };
     setSymbol(next);
     setLoadingMore(false);
     if (next === null) {
@@ -80,6 +82,9 @@ export function NewsSection({ initial, counts, lastFetch }: NewsSectionProps) {
       setMore(hasMore(rows.length, NEWS_PAGE));
     } catch (err) {
       if (id !== request.current) return;
+      setSymbol(previous.symbol);
+      setItems(previous.items);
+      setMore(previous.more);
       toast.error("Chargement impossible", { description: err instanceof Error ? err.message : undefined });
     } finally {
       if (id === request.current) setFiltering(false);
@@ -148,7 +153,7 @@ export function NewsSection({ initial, counts, lastFetch }: NewsSectionProps) {
         <EmptyState
           icon={Newspaper}
           title={selected ? `Aucune actualité pour ${selected.symbol}` : "Aucune actualité pour l'instant"}
-          description="Les actualités arrivent au prochain passage (toutes les heures, de 7 h à 22 h)."
+          description={NEWS_EMPTY_HINT}
         />
       ) : (
         <Card className="overflow-hidden">
@@ -192,38 +197,55 @@ function CountBadge({ count, selected }: { count: number; selected: boolean }) {
   );
 }
 
+const rowClass = "flex items-start gap-3 px-5 py-3.5 sm:px-6";
+
 function NewsItem({ row, now }: { row: NewsRow; now: number | null }) {
   const title = displayTitle(row);
+  const link = isHttpUrl(row.link);
+  const body = (
+    <span className="min-w-0 flex-1">
+      <span
+        title={title.original}
+        className={cn(
+          "block text-[14px] font-semibold leading-snug tracking-[-0.01em] text-fg",
+          link && "group-hover:text-brand",
+        )}
+      >
+        {title.text}
+      </span>
+      <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+        {row.symbols.map((s) => (
+          <span
+            key={s}
+            className="inline-flex h-5 items-center rounded-full bg-brand-soft px-2 font-mono text-[11px] font-semibold text-brand"
+          >
+            {s}
+          </span>
+        ))}
+        {row.publisher && <span className="min-w-0 break-words font-medium">{row.publisher}</span>}
+        <span aria-hidden className="text-subtle">
+          ·
+        </span>
+        <time dateTime={new Date(row.publishedAt).toISOString()} className="text-subtle">
+          {now === null ? " " : newsAge(row.publishedAt, now)}
+        </time>
+      </span>
+    </span>
+  );
+  // Lien seulement pour une URL http(s), vérifiée de nouveau ici ; sinon ligne simple.
+  if (!link) return <li className={rowClass}>{body}</li>;
   return (
     <li>
       <a
         href={row.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-6"
+        className={cn(
+          rowClass,
+          "group transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        )}
       >
-        <span className="min-w-0 flex-1">
-          <span title={title.original} className="block text-[14px] font-semibold leading-snug tracking-[-0.01em] text-fg group-hover:text-brand">
-            {title.text}
-          </span>
-          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
-            {row.symbols.map((s) => (
-              <span
-                key={s}
-                className="inline-flex h-5 items-center rounded-full bg-brand-soft px-2 font-mono text-[11px] font-semibold text-brand"
-              >
-                {s}
-              </span>
-            ))}
-            {row.publisher && <span className="min-w-0 break-words font-medium">{row.publisher}</span>}
-            <span aria-hidden className="text-subtle">
-              ·
-            </span>
-            <time dateTime={new Date(row.publishedAt).toISOString()} className="text-subtle">
-              {now === null ? " " : newsAge(row.publishedAt, now)}
-            </time>
-          </span>
-        </span>
+        {body}
         <ExternalLink aria-hidden className="mt-0.5 size-4 shrink-0 text-subtle group-hover:text-brand" />
         <span className="sr-only">(s&apos;ouvre dans un nouvel onglet)</span>
       </a>

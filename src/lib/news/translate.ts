@@ -8,6 +8,8 @@ import { news } from "@/lib/db/schema";
 
 const WINDOW_MS = 7 * 86_400_000;
 const BATCH = 50;
+/** Délai maximal de l'appel de traduction. */
+const TIMEOUT_MS = 60_000;
 
 const output = z.object({ items: z.array(z.object({ id: z.number().int(), title_fr: z.string() })) });
 
@@ -34,21 +36,25 @@ export async function translatePendingTitles(db: Db, ai: Ai | null, now: number 
     .all();
   if (pending.length === 0) return 0;
   try {
-    const message = await ai.client.messages.parse({
-      model: ai.model,
-      max_tokens: 8000,
-      system: SYSTEM,
-      output_config: {
-        ...(modelSupports(ai.model, "effort") ? { effort: "low" as const } : {}),
-        format: zodOutputFormat(output),
-      },
-      messages: [
-        {
-          role: "user",
-          content: `Titres à traduire (JSON, ${pending.length} éléments) :\n${JSON.stringify(pending)}`,
+    const message = await ai.client.messages.parse(
+      {
+        model: ai.model,
+        max_tokens: 8000,
+        system: SYSTEM,
+        output_config: {
+          ...(modelSupports(ai.model, "effort") ? { effort: "low" as const } : {}),
+          format: zodOutputFormat(output),
         },
-      ],
-    });
+        messages: [
+          {
+            role: "user",
+            content: `Titres à traduire (JSON, ${pending.length} éléments) :\n${JSON.stringify(pending)}`,
+          },
+        ],
+      },
+      // Tâche de fond : délai court et une seule reprise (défauts du SDK : 10 min, 2 reprises).
+      { signal: AbortSignal.timeout(TIMEOUT_MS), maxRetries: 1 },
+    );
     const parsed = message.parsed_output;
     if (!parsed) return 0;
     const known = new Set(pending.map((p) => p.id));

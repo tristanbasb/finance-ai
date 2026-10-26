@@ -3,6 +3,9 @@
 /** Taille d'une page d'articles (liste initiale et « Voir plus »). */
 export const NEWS_PAGE = 10;
 
+/** Texte de l'état vide (passages horaires de 7 h à 21 h inclus). */
+export const NEWS_EMPTY_HINT = "Les actualités arrivent au prochain passage (toutes les heures, de 7 h à 21 h).";
+
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
 
@@ -51,4 +54,14 @@ export function displayTitle(row: { title: string; titleFr: string | null }): { 
 /** Une page pleine laisse supposer d'autres articles (bouton « Voir plus »). */
 export function hasMore(received: number, limit: number): boolean {
   return received >= limit;
+}
+
+/** Vrai si `value` est une URL absolue http(s) (vérifiée de nouveau à l'affichage avant d'en faire un lien). */
+export function isHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
 }

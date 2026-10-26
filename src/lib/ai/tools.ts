@@ -5,6 +5,7 @@ import type { Db } from "@/lib/db";
 import { accounts, categories, news, newsSymbols, transactions } from "@/lib/db/schema";
 import { todayLocal } from "@/lib/dates";
 import { goalProgress, monthRange } from "@/lib/finance";
+import { activeSymbols } from "@/lib/news/store";
 import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listCategories } from "@/lib/queries/categories";
 import { listGoals } from "@/lib/queries/goals";
@@ -382,18 +383,16 @@ function getGoalsTool(db: Db, today: string) {
   };
 }
 
-/**
- * Exécute un outil. Ne lève jamais : outil inconnu, entrée invalide ou erreur interne → `{ error }`.
- * `today` (YYYY-MM-DD) sert de référence pour le mois en cours et les objectifs.
- */
+/** Actualités des positions actives cotées (symboles listés limités à ces positions). */
 function getNewsTool(db: Db, input: z.infer<typeof newsInput>) {
+  const active = [...activeSymbols(db).keys()];
+  const symbol = input.symbol?.trim().toUpperCase();
+  const wanted = symbol === undefined ? active : active.filter((s) => s === symbol);
+  if (wanted.length === 0) return { count: 0, articles: [] };
   const since = Date.now() - (input.days ?? 7) * 86_400_000;
-  const symbol = input.symbol?.toUpperCase();
   const where = and(
     gte(news.publishedAt, since),
-    symbol
-      ? sql`exists (select 1 from ${newsSymbols} where ${newsSymbols.newsId} = ${news.id} and ${newsSymbols.symbol} = ${symbol})`
-      : undefined,
+    sql`exists (select 1 from ${newsSymbols} where ${newsSymbols.newsId} = ${news.id} and ${inArray(newsSymbols.symbol, wanted)})`,
   );
   const rows = db
     .select()
@@ -404,9 +403,20 @@ function getNewsTool(db: Db, input: z.infer<typeof newsInput>) {
     .all();
   const symbols = new Map<number, string[]>();
   if (rows.length > 0) {
-    for (const l of db.select().from(newsSymbols).where(inArray(newsSymbols.newsId, rows.map((r) => r.id))).all()) {
-      symbols.set(l.newsId, [...(symbols.get(l.newsId) ?? []), l.symbol]);
-    }
+    const links = db
+      .select()
+      .from(newsSymbols)
+      .where(
+        and(
+          inArray(
+            newsSymbols.newsId,
+            rows.map((r) => r.id),
+          ),
+          inArray(newsSymbols.symbol, active),
+        ),
+      )
+      .all();
+    for (const l of links) symbols.set(l.newsId, [...(symbols.get(l.newsId) ?? []), l.symbol]);
   }
   return {
     count: rows.length,
@@ -421,6 +431,10 @@ function getNewsTool(db: Db, input: z.infer<typeof newsInput>) {
   };
 }
 
+/**
+ * Exécute un outil. Ne lève jamais : outil inconnu, entrée invalide ou erreur interne → `{ error }`.
+ * `today` (YYYY-MM-DD) sert de référence pour le mois en cours et les objectifs.
+ */
 export async function runTool(db: Db, name: string, input: unknown, today: string = todayLocal()): Promise<unknown> {
   try {
     switch (name) {

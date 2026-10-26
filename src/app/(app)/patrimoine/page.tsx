@@ -92,7 +92,7 @@ export default async function PatrimoinePage({ searchParams }: { searchParams: P
         pnl={held.length > 0 ? { amount: heldValue - heldCost, pct: heldCost === 0 ? 0 : (heldValue - heldCost) / heldCost } : null}
       />
 
-      <SectionNav initialSection={initialSection} />
+      <SectionNav initialSection={initialSection} showNews={newsCountsByHolding.length > 0} />
 
       <AccountsSection
         accounts={active.map((a) => ({ id: a.id, name: a.name, type: a.type, color: a.color, total: a.total }))}

@@ -37,7 +37,7 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
   répartition par type) et **Actualités** des positions cotées : titres traduits en français
   par Claude (titre d'origine tant qu'il n'est pas traduit, ou sans clé API), éditeur et
   ancienneté, filtre par position, « Voir plus » ; le lien ouvre l'article chez l'éditeur.
-  Elles viennent de Yahoo Finance, récupérées toutes les heures de 7 h à 22 h (heure du
+  Elles viennent de Yahoo Finance, récupérées toutes les heures de 7 h à 21 h (heure du
   serveur, `TZ`) juste après les cours, et conservées 30 jours. Demandez à Claude « Quoi de neuf
   sur mes actions ? ».
 - **Budgets** : dépenses du mois par catégorie, budget **modifiable sur place** (touchez le
@@ -206,7 +206,7 @@ Pour ne pas vous inonder quand vous importez un historique, les alertes ne conce
 **mois en cours** (transactions des 35 derniers jours).
 
 Les cours sont actualisés automatiquement **toutes les heures**. Une alerte de variation
-d'une position cite jusqu'à 3 titres d'actualité des dernières 48 h sur cette position, dans
+d'une position peut citer jusqu'à 3 titres d'actualité des dernières 48 h sur cette position, dans
 l'application comme sur Telegram.
 
 ## Telegram

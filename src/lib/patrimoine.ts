@@ -3,9 +3,15 @@ export const PATRIMOINE_SECTIONS = [
   { id: "comptes", label: "Comptes" },
   { id: "objectifs", label: "Objectifs" },
   { id: "investissements", label: "Investissements" },
+  { id: "actualites", label: "Actualités" },
 ] as const;
 
 export type PatrimoineSectionId = (typeof PATRIMOINE_SECTIONS)[number]["id"];
+
+/** Rubriques affichées : Actualités seulement si sa section l'est (au moins une position cotée). */
+export function patrimoineSections({ news }: { news: boolean }): (typeof PATRIMOINE_SECTIONS)[number][] {
+  return PATRIMOINE_SECTIONS.filter((s) => news || s.id !== "actualites");
+}
 
 /** Alias d'ancres acceptés (ancien nom de la rubrique Épargne). */
 const ALIASES: Record<string, PatrimoineSectionId> = { epargne: "comptes" };

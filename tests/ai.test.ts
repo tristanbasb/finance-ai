@@ -178,6 +178,9 @@ describe("outils", () => {
         .get();
       for (const s of syms) db.insert(newsSymbols).values({ newsId: row.id, symbol: s }).run();
     };
+    const acc = db.select().from(accounts).get()!;
+    db.insert(holdings).values({ accountId: acc.id, symbol: "cw8", name: "MSCI World", assetType: "etf", quantity: 1, avgPrice: 1 }).run();
+    db.insert(holdings).values({ accountId: acc.id, symbol: "AAPL", name: "Apple", assetType: "stock", quantity: 1, avgPrice: 1 }).run();
     add("1", "Older", "Plus ancien", now - 2 * 86_400_000, ["CW8"]);
     add("2", "Newer", null, now - 3_600_000, ["CW8", "AAPL"]);
     add("3", "Other", "Autre", now - 3_600_000, ["AAPL"]);
@@ -198,6 +201,32 @@ describe("outils", () => {
     expect(((await runTool(db, "get_news", {})) as R).count).toBe(3);
     expect(((await runTool(db, "get_news", { limit: 1 })) as R).articles).toHaveLength(1);
     expect(await runTool(db, "get_news", { days: 99 })).toHaveProperty("error");
+  });
+
+  it("get_news se limite aux positions actives : symboles vendus ou de comptes archivés écartés", async () => {
+    const db = freshDb();
+    const now = Date.now();
+    const acc = db.select().from(accounts).get()!;
+    const archived = db.insert(accounts).values({ name: "Vieux", type: "investment", archived: true }).returning().get();
+    db.insert(holdings).values({ accountId: acc.id, symbol: "AAPL", name: "Apple", assetType: "stock", quantity: 1, avgPrice: 1 }).run();
+    db.insert(holdings).values({ accountId: archived.id, symbol: "MSFT", name: "Microsoft", assetType: "stock", quantity: 1, avgPrice: 1 }).run();
+    const add = (uuid: string, syms: string[]) => {
+      const row = db
+        .insert(news)
+        .values({ uuid, title: uuid, publisher: "Yahoo", link: `https://x/${uuid}`, publishedAt: now - 3_600_000, fetchedAt: now })
+        .returning({ id: news.id })
+        .get();
+      for (const s of syms) db.insert(newsSymbols).values({ newsId: row.id, symbol: s }).run();
+    };
+    add("both", ["AAPL", "TSLA"]); // TSLA vendu (plus de position)
+    add("sold", ["TSLA"]);
+    add("archived", ["MSFT"]);
+    type R = { count: number; articles: { symbols: string[]; original_title: string }[] };
+    const all = (await runTool(db, "get_news", {})) as R;
+    expect(all.articles.map((a) => a.original_title)).toEqual(["both"]);
+    expect(all.articles[0].symbols).toEqual(["AAPL"]);
+    expect(((await runTool(db, "get_news", { symbol: "tsla" })) as R).count).toBe(0);
+    expect(((await runTool(db, "get_news", { symbol: "MSFT" })) as R).count).toBe(0);
   });
 
   it("search_transactions { q: 'loyer' } filtre libellés et notes, montants en euros", async () => {

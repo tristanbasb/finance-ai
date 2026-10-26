@@ -4,16 +4,18 @@ import { accounts, holdings, news, newsSymbols } from "@/lib/db/schema";
 import type { NewsItem } from "./yahoo";
 
 /** Durée de conservation des actualités. */
-const RETENTION_MS = 30 * 86_400_000;
+export const RETENTION_MS = 30 * 86_400_000;
 
 /**
  * Enregistre les articles (dédoublonnés par uuid) et les lie au symbole interrogé ainsi qu'à
- * chaque ticker associé détenu (`held`, en majuscules). Renvoie le nombre d'articles nouveaux.
+ * chaque ticker associé détenu (`held`, en majuscules). Les articles plus vieux que la durée
+ * de conservation sont ignorés (ils seraient purgés aussitôt). Renvoie le nombre d'articles nouveaux.
  */
 export function saveNews(db: Db, symbol: string, items: NewsItem[], held: Set<string>, now: number): number {
   let created = 0;
   db.transaction((tx) => {
     for (const it of items) {
+      if (it.publishedAt < now - RETENTION_MS) continue;
       const inserted = tx
         .insert(news)
         .values({
@@ -71,24 +73,31 @@ export type NewsRow = {
   symbols: string[];
 };
 
+export type QuotedAssetType = "stock" | "etf" | "crypto";
+
 /**
- * Positions actives suivies (actions, ETF, cryptos des comptes non archivés) : symbole en
- * majuscules → nom de la première position rencontrée, triées par symbole.
+ * Positions actives cotées (actions, ETF, cryptos des comptes non archivés) : symbole en
+ * majuscules → nom et type de la première position rencontrée, triées par symbole.
  */
-function activeSymbols(db: Db): Map<string, string> {
+export function activeHoldings(db: Db): Map<string, { name: string; assetType: QuotedAssetType }> {
   const rows = db
-    .select({ symbol: holdings.symbol, name: holdings.name })
+    .select({ symbol: holdings.symbol, name: holdings.name, assetType: holdings.assetType })
     .from(holdings)
     .innerJoin(accounts, eq(accounts.id, holdings.accountId))
     .where(and(inArray(holdings.assetType, ["stock", "etf", "crypto"]), eq(accounts.archived, false)))
     .orderBy(holdings.id)
     .all();
-  const out = new Map<string, string>();
+  const out = new Map<string, { name: string; assetType: QuotedAssetType }>();
   for (const r of rows) {
     const symbol = r.symbol.trim().toUpperCase();
-    if (symbol && !out.has(symbol)) out.set(symbol, r.name);
+    if (symbol && !out.has(symbol)) out.set(symbol, { name: r.name, assetType: r.assetType as QuotedAssetType });
   }
   return new Map([...out].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/** Positions actives cotées : symbole en majuscules → nom, triées par symbole. */
+export function activeSymbols(db: Db): Map<string, string> {
+  return new Map([...activeHoldings(db)].map(([symbol, h]) => [symbol, h.name]));
 }
 
 /**

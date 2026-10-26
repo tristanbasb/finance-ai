@@ -261,6 +261,57 @@ describe("tick : cours horaires", () => {
     expect(alerts.runAlertChecks).toHaveBeenCalledWith(db, { prices: true, goals: true });
   });
 
+  it("alertes avant traduction : une traduction lente n'empêche pas l'alerte de cours du même passage", async () => {
+    vi.mocked(alerts.runAlertChecks).mockRestore(); // moteur réel
+    vi.stubEnv("ANTHROPIC_API_KEY", ""); // message d'alerte sans IA
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t = mon(10);
+    vi.setSystemTime(t);
+    let release = () => {};
+    let done: Promise<void> = Promise.resolve();
+    try {
+      const db = freshDb();
+      setSetting(db, "digests", { ...prefs, weekly: false, monthly: false });
+      withHolding(db);
+      const prices: PriceDeps = {
+        stock: async () => new Map([["AAPL", { price: 150, currency: "EUR", changePct: 6.2, changeAt: t.getTime() - 60_000 }]]),
+        crypto: async () => new Map(),
+        fx: async () => 1,
+      };
+      const alertsAtTranslation: number[] = [];
+      // Traduction qui ne répond qu'après 15 min (au-delà de la fraîcheur des cours).
+      const parse = vi.fn(() => {
+        alertsAtTranslation.push(db.select().from(messages).where(eq(messages.kind, "alert")).all().length);
+        return new Promise((resolve) => {
+          release = () => {
+            vi.setSystemTime(mon(10, 15));
+            resolve({ parsed_output: { items: [] } });
+          };
+        });
+      });
+      const ai = { client: { messages: { parse } }, model: "m" } as unknown as Ai;
+      const news: NewsDeps = {
+        fetch: async () => [
+          { uuid: "n1", title: "Apple soars", publisher: "Yahoo", link: "https://x/1", publishedAt: t.getTime() - 3_600_000, relatedTickers: [] },
+        ],
+        ai: () => ai,
+      };
+      done = tick(db, t, { ai: null, prices, news });
+      await vi.waitFor(() => expect(parse).toHaveBeenCalled());
+      // L'alerte est déjà publiée quand la traduction commence, avec le titre d'origine.
+      expect(alertsAtTranslation).toEqual([1]);
+      const alert = db.select().from(messages).where(eq(messages.kind, "alert")).get()!;
+      expect(alert.content).toContain("Apple soars");
+      release();
+      await done;
+      expect(db.select().from(messages).where(eq(messages.kind, "alert")).all()).toHaveLength(1);
+    } finally {
+      release();
+      await done;
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("une erreur de cours ne bloque pas les bilans", async () => {
     const db = pastRuns(freshDb());
     withHolding(db);

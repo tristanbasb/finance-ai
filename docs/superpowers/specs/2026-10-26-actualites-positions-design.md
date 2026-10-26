@@ -35,6 +35,7 @@ Décisions de l'utilisateur :
   symbole pour stock/etf ; pour une crypto, `SYMBOLE-USD` si le symbole est court
   (alphanumérique, ≤ 6 caractères, ex. BTC), sinon le symbole tel quel (ex. identifiant
   CoinGecko « bitcoin »).
+  Règle exacte : `-USD` (symbole mis en majuscules) seulement si le symbole vérifie `/^[A-Za-z0-9]{1,6}$/` et est entièrement en majuscules ou fait 3 caractères au plus (`btc` → `BTC-USD`, `ABCDEF` → `ABCDEF-USD`, `solana` et `ABCDEFG` inchangés).
 - **Stockage** : table `news` (migration additive) et table de liaison `news_symbols`
   (un article peut concerner plusieurs positions : symbole interrogé + `relatedTickers` qui
   correspondent à une position). Unicité par `uuid` Yahoo. Rétention 30 jours (purge à chaque
@@ -46,10 +47,12 @@ Décisions de l'utilisateur :
   d'origine s'affiche, nouvelle tentative au passage suivant. Pas de « phrase de contexte » :
   Yahoo ne fournit pas d'extrait, et une phrase rédigée à partir du seul titre risquerait
   d'inventer.
-- **Planification** : dans la tâche horaire des cours (`runPrices`), entre 7 h et 22 h (heure du
-  serveur), après l'actualisation des cours et **avant** les contrôles d'alertes, pour que
-  l'alerte de variation voie les actualités de l'heure. Échec des actualités journalisé, sans
-  bloquer les alertes.
+- **Planification** : dans la tâche horaire des cours (`runPrices`), passages de 7 h à 21 h (heure
+  du serveur), après l'actualisation des cours, dans cet ordre : récupération Yahoo (4 symboles à
+  la fois) et purge, contrôles d'alertes, puis traduction. Les alertes n'attendent jamais Claude
+  (les cours ne restent « frais » que 5 min) : elles citent les titres déjà traduits, sinon
+  d'origine. Chaque étape est isolée : un échec est journalisé sans bloquer les suivantes. La
+  traduction a un délai de 60 s et une seule reprise.
 - **Alertes** (`src/lib/alerts/engine.ts`) : les faits d'une alerte `price` reçoivent
   `news: string[]` (jusqu'à 3 titres, français sinon d'origine, publiés dans les 48 h) ; le
   prompt d'alerte demande de les citer comme contexte possible, sans affirmer de causalité ni

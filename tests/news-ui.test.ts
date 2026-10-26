@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayTitle, hasMore, newsAge, updatedLabel } from "@/lib/news-ui";
+import { NEWS_EMPTY_HINT, displayTitle, hasMore, isHttpUrl, newsAge, updatedLabel } from "@/lib/news-ui";
 
 const now = new Date(2026, 9, 26, 15, 0).getTime();
 const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
@@ -52,5 +52,26 @@ describe("hasMore", () => {
   it("vrai seulement si la page est pleine", () => {
     expect(hasMore(10, 10)).toBe(true);
     expect(hasMore(9, 10)).toBe(false);
+  });
+});
+
+describe("isHttpUrl", () => {
+  it("accepte http et https", () => {
+    expect(isHttpUrl("https://finance.yahoo.com/news/a.html")).toBe(true);
+    expect(isHttpUrl("http://example.com")).toBe(true);
+    expect(isHttpUrl("HTTPS://EXAMPLE.COM/x")).toBe(true);
+  });
+  it("refuse les autres schémas et les valeurs invalides", () => {
+    expect(isHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(isHttpUrl("data:text/html,x")).toBe(false);
+    expect(isHttpUrl("ftp://example.com")).toBe(false);
+    expect(isHttpUrl("/relatif")).toBe(false);
+    expect(isHttpUrl("")).toBe(false);
+  });
+});
+
+describe("NEWS_EMPTY_HINT", () => {
+  it("annonce le dernier passage à 21 h", () => {
+    expect(NEWS_EMPTY_HINT).toBe("Les actualités arrivent au prochain passage (toutes les heures, de 7 h à 21 h).");
   });
 });

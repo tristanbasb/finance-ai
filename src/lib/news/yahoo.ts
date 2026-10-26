@@ -20,11 +20,19 @@ export type NewsItem = {
 export type NewsFetcher = (query: string) => Promise<NewsItem[]>;
 
 /**
- * Requête Yahoo pour une position : un symbole crypto court (« btc », « BTC ») devient
- * une paire (« BTC-USD ») ; les autres identifiants sont transmis tels quels.
+ * Requête Yahoo pour une position. Un symbole crypto de 1 à 6 caractères alphanumériques,
+ * entièrement en majuscules ou de 3 caractères au plus (« BTC », « btc », « ABCDEF »), devient
+ * une paire en majuscules (« BTC-USD ») ; les autres identifiants (« bitcoin », « solana ») et
+ * les symboles d'actions ou d'ETF sont transmis tels quels.
  */
 export function newsQuery(symbol: string, assetType: "stock" | "etf" | "crypto"): string {
-  if (assetType === "crypto" && /^[A-Za-z0-9]{1,6}$/.test(symbol)) return `${symbol.toUpperCase()}-USD`;
+  if (
+    assetType === "crypto" &&
+    /^[A-Za-z0-9]{1,6}$/.test(symbol) &&
+    (symbol === symbol.toUpperCase() || symbol.length <= 3)
+  ) {
+    return `${symbol.toUpperCase()}-USD`;
+  }
   return symbol;
 }
 

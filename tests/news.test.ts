@@ -8,7 +8,7 @@ import { newsQuery, parseYahooNews } from "@/lib/news/yahoo";
 import { lastNewsFetch, listNews, newsCounts, purgeNews, saveNews } from "@/lib/news/store";
 import type { NewsItem } from "@/lib/news/yahoo";
 import { translatePendingTitles } from "@/lib/news/translate";
-import { isNewsHour, refreshNews, type NewsDeps } from "@/lib/news";
+import { fetchNews, isNewsHour, translateNews, type NewsDeps } from "@/lib/news";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Ai } from "@/lib/ai/client";
 
@@ -34,15 +34,17 @@ function item(extra: Partial<NewsItem> = {}): NewsItem {
 describe("newsQuery", () => {
   it("ajoute -USD aux symboles crypto courts en majuscules", () => {
     expect(newsQuery("BTC", "crypto")).toBe("BTC-USD");
-  });
-  it("laisse intacts les identifiants crypto non standard", () => {
-    expect(newsQuery("bitcoin", "crypto")).toBe("bitcoin");
-    expect(newsQuery("ABCDEFG", "crypto")).toBe("ABCDEFG");
-  });
-  it("met en majuscules et suffixe les symboles crypto de 1 à 6 caractères", () => {
-    expect(newsQuery("btc", "crypto")).toBe("BTC-USD");
     expect(newsQuery("X", "crypto")).toBe("X-USD");
     expect(newsQuery("ABCDEF", "crypto")).toBe("ABCDEF-USD");
+  });
+  it("met en majuscules et suffixe les symboles crypto de 3 caractères au plus", () => {
+    expect(newsQuery("btc", "crypto")).toBe("BTC-USD");
+    expect(newsQuery("eth", "crypto")).toBe("ETH-USD");
+  });
+  it("laisse intacts les identifiants crypto non standard (noms, plus de 6 caractères)", () => {
+    expect(newsQuery("bitcoin", "crypto")).toBe("bitcoin");
+    expect(newsQuery("solana", "crypto")).toBe("solana");
+    expect(newsQuery("ABCDEFG", "crypto")).toBe("ABCDEFG");
   });
   it("laisse intacts les symboles d'ETF et d'actions", () => {
     expect(newsQuery("CW8.PA", "etf")).toBe("CW8.PA");
@@ -106,6 +108,18 @@ describe("saveNews", () => {
     saveNews(db, "AAPL", [item()], new Set(["AAPL", "MSFT"]), 5_000);
     expect(saveNews(db, "MSFT", [item()], new Set(["AAPL", "MSFT"]), 6_000)).toBe(0);
     expect(db.select().from(newsSymbols).all()).toHaveLength(2);
+  });
+
+  it("ignore les articles plus vieux que la durée de conservation", () => {
+    const db = freshDb();
+    const now = 100 * 86_400_000;
+    const items = [
+      item({ uuid: "old", publishedAt: now - 31 * 86_400_000 }),
+      item({ uuid: "new", publishedAt: now - 29 * 86_400_000 }),
+    ];
+    expect(saveNews(db, "AAPL", items, new Set(["AAPL"]), now)).toBe(1);
+    expect(db.select().from(news).all().map((r) => r.uuid)).toEqual(["new"]);
+    expect(db.select().from(newsSymbols).all()).toHaveLength(1);
   });
 });
 
@@ -180,8 +194,8 @@ describe("translatePendingTitles", () => {
   });
 });
 
-describe("refreshNews", () => {
-  it("un symbole en échec n'empêche pas les autres ; archivés et doublons écartés", async () => {
+describe("fetchNews", () => {
+  it("un symbole en échec n'empêche pas les autres ; archivés et doublons écartés ; aucune traduction", async () => {
     const db = freshDb();
     const acc = db.select().from(accounts).get()!;
     const archived = db.insert(accounts).values({ name: "Vieux", type: "investment", archived: true }).returning().get();
@@ -198,16 +212,63 @@ describe("refreshNews", () => {
       if (q === "AAPL") throw new Error("réseau");
       return [item({ uuid: `u-${q}`, publishedAt: NOW - 1000 })];
     });
-    const deps: NewsDeps = { fetch, ai: () => null };
-    const res = await refreshNews(db, deps, new Date(NOW));
+    const { ai, parse } = mockAi({ items: [] });
+    const deps: NewsDeps = { fetch, ai: () => ai };
+    expect(await fetchNews(db, deps, new Date(NOW))).toBe(2);
     expect(fetch.mock.calls.map((c) => c[0]).sort()).toEqual(["AAPL", "BTC-USD", "MSFT"]);
-    expect(res).toEqual({ added: 2, translated: 0 });
     expect(db.select().from(news).all()).toHaveLength(2);
+    expect(parse).not.toHaveBeenCalled();
+  });
+
+  it("interroge Yahoo 4 symboles à la fois au plus", async () => {
+    const db = freshDb();
+    const acc = db.select().from(accounts).get()!;
+    for (const s of ["A", "B", "C", "D", "E", "F"])
+      db.insert(holdings).values({ accountId: acc.id, symbol: s, name: s, assetType: "stock", quantity: 1, avgPrice: 1 }).run();
+    let running = 0;
+    let peak = 0;
+    const fetch = vi.fn(async () => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 5));
+      running--;
+      return [];
+    });
+    await fetchNews(db, { fetch, ai: () => null }, new Date(NOW));
+    expect(fetch).toHaveBeenCalledTimes(6);
+    expect(peak).toBe(4);
   });
 
   it("ne lève jamais, même si la base échoue", async () => {
     const deps: NewsDeps = { fetch: async () => [], ai: () => null };
-    await expect(refreshNews({} as never, deps, new Date(NOW))).resolves.toEqual({ added: 0, translated: 0 });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(fetchNews({} as never, deps, new Date(NOW))).resolves.toBe(0);
+  });
+});
+
+describe("translateNews", () => {
+  it("traduit les titres en attente", async () => {
+    const db = freshDb();
+    saveNews(db, "AAPL", [item({ uuid: "a", publishedAt: NOW - 1000 })], new Set(["AAPL"]), NOW);
+    const id = db.select().from(news).get()!.id;
+    const { ai } = mockAi({ items: [{ id, title_fr: "Titre" }] });
+    expect(await translateNews(db, { fetch: async () => [], ai: () => ai }, new Date(NOW))).toBe(1);
+  });
+
+  it("passe un délai de 60 s et une seule reprise à l'API", async () => {
+    const db = freshDb();
+    saveNews(db, "AAPL", [item({ uuid: "a", publishedAt: NOW - 1000 })], new Set(["AAPL"]), NOW);
+    const { ai, parse } = mockAi({ items: [] });
+    await translatePendingTitles(db, ai, NOW);
+    const opts = (parse.mock.calls[0] as unknown as [unknown, { signal: AbortSignal; maxRetries: number }])[1];
+    expect(opts.maxRetries).toBe(1);
+    expect(opts.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("ne lève jamais, même si l'IA ou la base échoue", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const deps: NewsDeps = { fetch: async () => [], ai: () => { throw new Error("config"); } };
+    await expect(translateNews(freshDb(), deps, new Date(NOW))).resolves.toBe(0);
   });
 });
 

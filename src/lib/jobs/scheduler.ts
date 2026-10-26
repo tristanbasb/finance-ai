@@ -6,7 +6,7 @@ import { postAssistantMessage } from "@/lib/assistant/conversation";
 import type { Db } from "@/lib/db";
 import { holdings, jobRuns } from "@/lib/db/schema";
 import { todayLocal } from "@/lib/dates";
-import { isNewsHour, realNewsDeps, refreshNews, type NewsDeps } from "@/lib/news";
+import { fetchNews, isNewsHour, realNewsDeps, translateNews, type NewsDeps } from "@/lib/news";
 import { refreshPrices, type PriceDeps } from "@/lib/prices";
 import { realPriceDeps } from "@/lib/prices/real-deps";
 import { recordSnapshot } from "@/lib/queries/snapshots";
@@ -115,14 +115,30 @@ async function runPrices(db: Db, now: Date, deps: TickDeps): Promise<void> {
   if (!claimJob(db, "prices", hourKey(now), now.getTime())) return;
   await refreshPrices(db, deps.prices ?? realPriceDeps(), now, false);
   recordSnapshot(db, todayLocal(now));
-  if (isNewsHour(now)) {
+  // Ordre : actualités (Yahoo), alertes, puis traduction. Les cours ne restent « frais » que
+  // 5 min pour les alertes : elles n'attendent jamais Claude et citent les titres déjà traduits,
+  // sinon les titres d'origine.
+  const newsHour = isNewsHour(now);
+  const newsDeps = deps.news ?? realNewsDeps();
+  if (newsHour) {
     try {
-      await refreshNews(db, deps.news ?? realNewsDeps(), now);
+      await fetchNews(db, newsDeps, now);
     } catch (err) {
       console.error("[jobs] actualités :", err);
     }
   }
-  await runAlertChecks(db, { prices: true, goals: true });
+  try {
+    await runAlertChecks(db, { prices: true, goals: true });
+  } catch (err) {
+    console.error("[jobs] alertes :", err);
+  }
+  if (newsHour) {
+    try {
+      await translateNews(db, newsDeps, now);
+    } catch (err) {
+      console.error("[jobs] traduction des actualités :", err);
+    }
+  }
 }
 
 /** Un passage du planificateur : bilans dus puis cours horaires. Ne lève jamais. */
