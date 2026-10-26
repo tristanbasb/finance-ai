@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 // Convention : montants en centimes (entiers), dates « YYYY-MM-DD » (texte),
 // horodatages en millisecondes depuis l'epoch (entiers).
@@ -152,3 +152,31 @@ export const aiActions = sqliteTable("ai_actions", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
   undoneAt: integer("undone_at"),
 });
+
+/** Actualités Yahoo des positions ; `titleFr` reste vide tant que le titre n'est pas traduit. */
+export const news = sqliteTable(
+  "news",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    title: text("title").notNull(),
+    titleFr: text("title_fr"),
+    publisher: text("publisher").notNull(),
+    link: text("link").notNull(),
+    publishedAt: integer("published_at").notNull(),
+    fetchedAt: integer("fetched_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("news_published_at_idx").on(t.publishedAt)],
+);
+
+/** Symboles (en majuscules) auxquels une actualité se rattache. */
+export const newsSymbols = sqliteTable(
+  "news_symbols",
+  {
+    newsId: integer("news_id")
+      .notNull()
+      .references(() => news.id, { onDelete: "cascade" }),
+    symbol: text("symbol").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.newsId, t.symbol] })],
+);
