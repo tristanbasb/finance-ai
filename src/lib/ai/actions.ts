@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { Db } from "@/lib/db";
-import { accounts, aiActions, categories, goals, holdings, transactions } from "@/lib/db/schema";
+import { accounts, aiActions, categories, goals, holdings, recurring, transactions } from "@/lib/db/schema";
 import { formatDateFull } from "@/lib/format";
 import { formatEUR } from "@/lib/money";
 
@@ -97,6 +97,7 @@ function currentRow(db: Db, table: ChangeTable, id: number): Row | undefined {
   return db.select().from(t).where(eq(t.id, id)).get() as Row | undefined;
 }
 
+/** Les récurrentes ne sont jamais modifiées par une action : toute référence est donc extérieure. */
 /** Une ligne créée par l'action a-t-elle des dépendants extérieurs à l'action (ON DELETE SET NULL) ? */
 function hasForeignDependents(db: Db, change: Change, net: Change[]): boolean {
   const own = (table: ChangeTable) => new Set(net.filter((c) => c.table === table).map((c) => c.id));
@@ -106,13 +107,17 @@ function hasForeignDependents(db: Db, change: Change, net: Change[]): boolean {
   };
   if (change.table === "categories") {
     const rows = db.select({ id: transactions.id }).from(transactions).where(eq(transactions.categoryId, change.id)).all();
-    return outside(rows, "transactions");
+    return (
+      outside(rows, "transactions") ||
+      db.select({ id: recurring.id }).from(recurring).where(eq(recurring.categoryId, change.id)).all().length > 0
+    );
   }
   if (change.table === "accounts") {
     return (
       outside(db.select({ id: transactions.id }).from(transactions).where(eq(transactions.accountId, change.id)).all(), "transactions") ||
       outside(db.select({ id: holdings.id }).from(holdings).where(eq(holdings.accountId, change.id)).all(), "holdings") ||
-      outside(db.select({ id: goals.id }).from(goals).where(eq(goals.accountId, change.id)).all(), "goals")
+      outside(db.select({ id: goals.id }).from(goals).where(eq(goals.accountId, change.id)).all(), "goals") ||
+      db.select({ id: recurring.id }).from(recurring).where(eq(recurring.accountId, change.id)).all().length > 0
     );
   }
   return false;

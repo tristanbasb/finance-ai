@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -76,6 +76,9 @@ export function RecurringMonth({
 }) {
   const [pay, setPay] = useState<{ nonce: number; item: MonthRecurringRow | null }>({ nonce: 0, item: null });
   const [undo, setUndo] = useState<MonthRecurringRow | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  /** Le bouton cliqué disparaît après l'action : le focus revient au titre de la liste. */
+  const refocus = () => setTimeout(() => headingRef.current?.focus(), 0);
 
   return (
     <Card className={className}>
@@ -89,7 +92,7 @@ export function RecurringMonth({
           )
         }
       >
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle ref={headingRef} tabIndex={-1} className="flex items-center gap-2 outline-none">
           <CalendarClock aria-hidden className="size-4 text-brand" />
           Récurrentes du mois
         </CardTitle>
@@ -125,6 +128,7 @@ export function RecurringMonth({
                 period={period}
                 onPay={() => setPay((p) => ({ nonce: p.nonce + 1, item }))}
                 onUndoPaid={() => setUndo(item)}
+                onSettled={refocus}
               />
             ))}
           </ul>
@@ -139,9 +143,10 @@ export function RecurringMonth({
           period={period}
           item={pay.item}
           accounts={accounts}
+          onDone={refocus}
         />
       )}
-      <UndoPaidDialog item={undo} period={period} onClose={() => setUndo(null)} />
+      <UndoPaidDialog item={undo} period={period} onClose={() => setUndo(null)} onDone={refocus} />
     </Card>
   );
 }
@@ -166,11 +171,13 @@ function RecurringItem({
   period,
   onPay,
   onUndoPaid,
+  onSettled,
 }: {
   item: MonthRecurringRow;
   period: string;
   onPay: () => void;
   onUndoPaid: () => void;
+  onSettled: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"skip" | "undo" | null>(null);
@@ -193,6 +200,7 @@ function RecurringItem({
       }
       toast.success("Passée pour ce mois", { description: item.label });
       router.refresh();
+      onSettled();
     } catch {
       toast.error("Impossible de passer ce mois", { description: "Le serveur est injoignable." });
     } finally {
@@ -205,6 +213,7 @@ function RecurringItem({
     if (await deletePayment(item.id, period)) {
       toast.success("Saut annulé", { description: item.label });
       router.refresh();
+      onSettled();
     }
     setBusy(null);
   }
@@ -296,10 +305,12 @@ function UndoPaidDialog({
   item,
   period,
   onClose,
+  onDone,
 }: {
   item: MonthRecurringRow | null;
   period: string;
   onClose: () => void;
+  onDone: () => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -311,6 +322,7 @@ function UndoPaidDialog({
       toast.success("Validation annulée", { description: `${item.label} : opération supprimée` });
       onClose();
       router.refresh();
+      onDone();
     }
     setBusy(false);
   }

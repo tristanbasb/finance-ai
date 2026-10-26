@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { runAlertChecks } = vi.hoisted(() => ({ runAlertChecks: vi.fn(async () => {}) }));
 vi.mock("@/lib/alerts/engine", () => ({ runAlertChecks }));
 
-import { aiActions, accounts, categories, goals, holdings, transactions } from "@/lib/db/schema";
+import { aiActions, accounts, categories, goals, holdings, recurring, recurringPayments, transactions } from "@/lib/db/schema";
 import { createDb, type Db } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
@@ -196,6 +196,29 @@ describe("opérations", () => {
     expect(undoAction(db, out.actionId!).ok).toBe(true);
     expect(txRow(before.id)).toEqual(before);
     expectError(await run("delete_transaction", { ids: [before.id] }));
+  });
+
+  it("delete_transaction : refuse une opération validée depuis une récurrente", async () => {
+    const tx = addTx("Loyer", -30000);
+    const rec = db.insert(recurring).values({ label: "Loyer", amount: 30000, accountId: checkingId, frequency: "monthly", anchorMonth: null }).returning().get();
+    db.insert(recurringPayments).values({ recurringId: rec.id, period: "2026-10", transactionId: tx.id }).run();
+    expectError(
+      await run("delete_transaction", { id: tx.id }),
+      /validée depuis une dépense récurrente : annulez la validation dans Budgets/,
+    );
+    expect(txRow(tx.id)).toBeDefined();
+    expect(db.select().from(recurringPayments).all()).toHaveLength(1);
+    expect(actionCount()).toBe(0);
+  });
+
+  it("update_transaction : le montant d'une opération liée à une récurrente reste modifiable", async () => {
+    const tx = addTx("Loyer", -30000);
+    const rec = db.insert(recurring).values({ label: "Loyer", amount: 30000, accountId: checkingId, frequency: "monthly", anchorMonth: null }).returning().get();
+    db.insert(recurringPayments).values({ recurringId: rec.id, period: "2026-10", transactionId: tx.id }).run();
+    const out = await run("update_transaction", { id: tx.id, amount: 310 });
+    expect("error" in out.result).toBe(false);
+    expect(txRow(tx.id)!.amount).toBe(-31000);
+    expect(db.select().from(recurringPayments).all()).toHaveLength(1);
   });
 });
 

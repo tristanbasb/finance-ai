@@ -8,7 +8,7 @@ import {
   undoAction,
   type Change,
 } from "@/lib/ai/actions";
-import { aiActions, categories, goals, transactions } from "@/lib/db/schema";
+import { aiActions, categories, goals, recurring, transactions } from "@/lib/db/schema";
 import { createDb, type Db } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
@@ -224,6 +224,25 @@ describe("undoAction", () => {
     const id = recordAction(db, { tool: "x", summary: "s", changes: [{ table: "accounts", id: acc.id, before: null, after: acc }] });
     db.insert(goals).values({ name: "G", targetAmount: 100, accountId: acc.id }).run();
     expect(actionStatus(db, id).undoable).toBe(false);
+  });
+
+  it("refuse d'annuler un compte créé utilisé par une récurrente", () => {
+    const acc = db.insert(accounts).values({ name: "Neuf", type: "checking" }).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [{ table: "accounts", id: acc.id, before: null, after: acc }] });
+    db.insert(recurring).values({ label: "R", amount: 100, accountId: acc.id, frequency: "monthly", anchorMonth: null }).run();
+    const st = actionStatus(db, id);
+    expect(st.undoable).toBe(false);
+    expect(st.reason).toMatch(/^Modifié depuis : .* est utilisé par d'autres éléments.$/);
+  });
+
+  it("refuse d'annuler une catégorie créée utilisée par une récurrente", () => {
+    const cat = db.insert(categories).values({ name: "Nouv2", kind: "expense", color: "#fff", icon: "x" }).returning().get();
+    const id = recordAction(db, { tool: "x", summary: "s", changes: [{ table: "categories", id: cat.id, before: null, after: cat }] });
+    const rec = db.insert(recurring).values({ label: "R", amount: 100, accountId, categoryId: cat.id, frequency: "monthly", anchorMonth: null }).returning().get();
+    const st = actionStatus(db, id);
+    expect(st.undoable).toBe(false);
+    expect(st.reason).toBe("Modifié depuis : catégorie « Nouv2 » est utilisé par d'autres éléments.");
+    expect(db.select().from(recurring).where(eq(recurring.id, rec.id)).get()!.categoryId).toBe(cat.id);
   });
 
   it("refuse de recréer une ligne dont le compte lié n'existe plus", () => {

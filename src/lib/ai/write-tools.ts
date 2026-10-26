@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { and, eq, gte, gt, inArray, isNull, lt, lte, type SQL } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import type { Db } from "@/lib/db";
-import { accounts, categories, goals, holdings, transactions } from "@/lib/db/schema";
+import { accounts, categories, goals, holdings, recurringPayments, transactions } from "@/lib/db/schema";
 import { ACCOUNT_TYPES, ASSET_TYPES } from "@/lib/db/schema";
 import { ConflictError, NotFoundError } from "@/lib/api";
 import type { AlertScope } from "@/lib/alerts/engine";
@@ -428,6 +428,10 @@ function updateTransactionTool(db: Db, i: Input<"update_transaction">): Done {
 
 function deleteTransactionTool(db: Db, i: Input<"delete_transaction">): Done {
   const before = needRow(db, "transactions", i.id);
+  const linked = db.select({ id: recurringPayments.recurringId }).from(recurringPayments).where(eq(recurringPayments.transactionId, i.id)).get();
+  if (linked) {
+    throw new ToolError("Cette opération a été validée depuis une dépense récurrente : annulez la validation dans Budgets.");
+  }
   deleteTransaction(db, i.id);
   return {
     summary: `Opération supprimée : ${before.label} ${signedEUR(before.amount)}`,

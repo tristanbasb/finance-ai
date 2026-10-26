@@ -25,6 +25,8 @@ export type PayDialogProps = {
   item: { id: number; label: string; amount: number; accountId: number; categoryName: string | null };
   /** Tous les comptes : seuls les non archivés sont proposés. */
   accounts: PayAccount[];
+  /** Appelé après une validation réussie (le bouton cliqué a disparu). */
+  onDone?: () => void;
 };
 
 type Errors = Partial<Record<"amount" | "date" | "account", string>>;
@@ -35,7 +37,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
  * « Valider » une récurrente du mois : montant (prérempli), date (aujourd'hui) et compte, puis
  * création de l'opération. Le parent change la `key` à chaque ouverture pour repartir à neuf.
  */
-export function PayDialog({ open, onClose, period, item, accounts }: PayDialogProps) {
+export function PayDialog({ open, onClose, period, item, accounts, onDone }: PayDialogProps) {
   const router = useRouter();
   const formId = useId();
   const openAccounts = accounts.filter((a) => !a.archived);
@@ -79,6 +81,7 @@ export function PayDialog({ open, onClose, period, item, accounts }: PayDialogPr
         toast.success("Dépense validée", { description: `${item.label} : ${formatEUR(parsed.cents)}` });
         onClose();
         router.refresh();
+        onDone?.();
         return;
       }
       toast.error("Validation impossible", { description: await errorMessage(res) });

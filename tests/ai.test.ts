@@ -210,6 +210,8 @@ describe("outils", () => {
     it("avec prix : can_afford, remaining et missing", async () => {
       const db = forecastDb();
       const yes = (await runTool(db, "get_forecast", { price: 400 }, "2026-10-26")) as Forecast;
+      const cents = (await runTool(db, "get_forecast", { price: 19.99 }, "2026-10-26")) as Forecast;
+      expect(cents.afford!.price).toBe(19.99);
       expect(yes.afford).toEqual({ price: 400, can_afford: true, remaining: 300, missing: 0 });
       const no = (await runTool(db, "get_forecast", { price: 600.5 }, "2026-10-26")) as Forecast;
       expect(no.afford).toEqual({ price: 600.5, can_afford: false, remaining: 99.5, missing: 100.5 });

@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 type DivProps = HTMLAttributes<HTMLDivElement>;
@@ -31,7 +31,7 @@ export function CardHeader({
   );
 }
 
-export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
+export function CardTitle({ className, ...props }: ComponentProps<"h2">) {
   return (
     <h2
       className={cn("text-base font-bold tracking-[-0.015em] text-fg", className)}

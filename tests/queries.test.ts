@@ -306,6 +306,8 @@ describe("exportAll", () => {
       "goals",
       "holdings",
       "prices",
+      "recurring",
+      "recurringPayments",
       "snapshots",
       "transactions",
     ]);

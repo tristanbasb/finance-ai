@@ -6,6 +6,8 @@ import {
   goals,
   holdings,
   prices,
+  recurring,
+  recurringPayments,
   snapshots,
   transactions,
 } from "@/lib/db/schema";
@@ -19,6 +21,8 @@ export function exportAll(db: Db) {
     goals: db.select().from(goals).all(),
     holdings: db.select().from(holdings).all(),
     prices: db.select().from(prices).all(),
+    recurring: db.select().from(recurring).all(),
+    recurringPayments: db.select().from(recurringPayments).all(),
     snapshots: db.select().from(snapshots).all(),
     aiCache: db.select().from(aiCache).all(),
   };

@@ -46,7 +46,8 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
   assurances…) dans **Réglages → Dépenses récurrentes**, mensuelles, trimestrielles ou
   annuelles. Dans Budgets, la liste du mois indique ce qui reste **à valider** : **« Valider »**
   crée l'opération (montant, date et compte modifiables) et la marque payée, ou vous la passez
-  pour le mois. La carte **« Fin de mois »** affiche le solde prévu (soldes des comptes courants
+  pour le mois. Si l'opération est déjà entrée par un import CSV ou une saisie manuelle,
+  utilisez **« Passer ce mois »** pour qu'elle ne soit pas comptée deux fois. Pour **le mois en cours**, la liste et la carte **« Fin de mois »** s'affichent ; la carte affiche le solde prévu (soldes des comptes courants
   moins les récurrentes encore à payer) et **« Puis-je acheter »** vérifie si un achat reste
   compatible avec votre marge de sécurité (**200 €** par défaut, réglable). La prévision ne
   couvre que les **comptes courants** et **ne compte pas les dépenses courantes** (courses,
@@ -343,8 +344,8 @@ journaux périmés sont supprimés, puis la base est copiée avec son journal WA
 (cas d'une copie brute faite par `update.sh` sans image Docker disponible).
 
 **Repartir de zéro** : **Réglages → Données → Réinitialiser l'application** efface toutes les
-données (opérations, comptes, positions, objectifs, budgets, dépenses récurrentes, conversation avec Claude, réglages
-et liaison Telegram) et l'application repart comme une installation neuve. Le mot de passe, la
+données (opérations, comptes, positions, objectifs, budgets, dépenses récurrentes, conversation
+avec Claude, réglages et liaison Telegram) et l'application repart comme une installation neuve. Le mot de passe, la
 clé API et le token Telegram, qui sont dans `.env`, ne changent pas. La confirmation demande
 le mot de passe et le mot `RÉINITIALISER`. Une sauvegarde complète
 `backups/avant-reinitialisation-AAAAmmjj-HHMMSS.db` est faite juste avant : restaurez-la comme
