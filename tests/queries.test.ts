@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { accounts, categories, goals, holdings, prices, transactions } from "@/lib/db/schema";
+import { accounts, categories, goals, holdings, prices, recurring, transactions } from "@/lib/db/schema";
 import { ConflictError, NotFoundError } from "@/lib/api";
 import { deleteAccount, listAccountsWithBalances, updateAccount } from "@/lib/queries/accounts";
 import { deleteCategory } from "@/lib/queries/categories";
@@ -258,6 +258,14 @@ describe("suppressions", () => {
       .values({ accountId: acc, symbol: "X", name: "X", assetType: "etf", quantity: 1, avgPrice: 1 })
       .run();
     expect(() => deleteAccount(db, acc)).toThrow(ConflictError);
+  });
+
+  it("deleteAccount avec récurrentes seules → ConflictError (message habituel)", () => {
+    const db = freshDb();
+    const acc = addAccount(db, "Courant 2");
+    db.insert(recurring).values({ label: "Loyer", amount: 50_000, accountId: acc, frequency: "monthly", anchorMonth: null }).run();
+    expect(() => deleteAccount(db, acc)).toThrow(ConflictError);
+    expect(() => deleteAccount(db, acc)).toThrow("Ce compte contient des données, archivez-le plutôt.");
   });
 
   it("deleteAccount vide : supprime et détache les objectifs ; inconnu → NotFoundError", () => {

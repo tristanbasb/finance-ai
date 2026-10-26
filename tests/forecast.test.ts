@@ -120,6 +120,17 @@ describe("prévision", () => {
     expect(by(skipped.id)).toMatchObject({ status: "skipped", transactionId: null });
   });
 
+  it("une récurrente payée avec un vrai montant n'est pas soustraite deux fois", () => {
+    const paid = add("Salle de sport", 3_000, c1);
+    add("Loyer", 5_000, c1);
+    const tx = createTransaction(db, { accountId: c1, categoryId: null, date: "2026-10-05", amount: -3_000, label: "Salle de sport" });
+    db.insert(recurringPayments).values({ recurringId: paid.id, period: P, transactionId: tx.id }).run();
+    const f = forecastFor(db, P);
+    expect(f.checkingBalance).toBe(117_000);
+    expect(f.dueTotal).toBe(5_000);
+    expect(f.forecast).toBe(f.checkingBalance - 5_000);
+  });
+
   it("exclut un compte courant archivé", () => {
     add("Loyer", 5_000, c2);
     updateAccount(db, c2, { archived: true });

@@ -1,6 +1,6 @@
 import { count, eq, sql } from "drizzle-orm";
 import type { Db } from "@/lib/db";
-import { accounts, holdings, transactions } from "@/lib/db/schema";
+import { accounts, holdings, recurring, transactions } from "@/lib/db/schema";
 import { ConflictError, NotFoundError } from "@/lib/api";
 import { accountBalance } from "@/lib/finance";
 import type { AccountInput } from "@/lib/validation";
@@ -56,7 +56,7 @@ export function updateAccount(db: Db, id: number, patch: Partial<AccountInput>):
   return db.update(accounts).set(patch).where(eq(accounts.id, id)).returning().get()!;
 }
 
-/** Supprime un compte vide ; refuse s'il a des transactions ou des positions (à archiver plutôt). */
+/** Supprime un compte vide ; refuse s'il a des transactions, des positions ou des récurrentes (à archiver plutôt). */
 export function deleteAccount(db: Db, id: number): void {
   db.transaction((tx) => {
     if (!tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, id)).get()) {
@@ -64,7 +64,8 @@ export function deleteAccount(db: Db, id: number): void {
     }
     const txCount = tx.select({ n: count() }).from(transactions).where(eq(transactions.accountId, id)).get()!.n;
     const holdingCount = tx.select({ n: count() }).from(holdings).where(eq(holdings.accountId, id)).get()!.n;
-    if (txCount > 0 || holdingCount > 0) {
+    const recurringCount = tx.select({ n: count() }).from(recurring).where(eq(recurring.accountId, id)).get()!.n;
+    if (txCount > 0 || holdingCount > 0 || recurringCount > 0) {
       throw new ConflictError("Ce compte contient des données, archivez-le plutôt.");
     }
     tx.delete(accounts).where(eq(accounts.id, id)).run();
