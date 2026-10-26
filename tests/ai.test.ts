@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 import { createDb, getDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { accounts, aiCache, categories, holdings, news, newsSymbols } from "@/lib/db/schema";
+import { accounts, aiCache, categories, holdings, news, newsSymbols, recurring } from "@/lib/db/schema";
+import { createAccount } from "@/lib/queries/accounts";
 import { createTransactions } from "@/lib/queries/transactions";
 import { AI_DISABLED_MESSAGE, aiErrorInfo, getAi, type Ai } from "@/lib/ai/client";
 import { aiTools, runTool } from "@/lib/ai/tools";
@@ -151,8 +152,9 @@ describe("aiErrorInfo", () => {
 });
 
 describe("outils", () => {
-  it("définit les 6 outils en lecture seule", () => {
+  it("définit les 7 outils en lecture seule", () => {
     expect(aiTools.map((t) => t.name).sort()).toEqual([
+      "get_forecast",
       "get_goals",
       "get_holdings",
       "get_news",
@@ -160,6 +162,68 @@ describe("outils", () => {
       "search_transactions",
       "spending_by_category",
     ]);
+  });
+
+  describe("get_forecast", () => {
+    type Forecast = {
+      currency: string;
+      period: string;
+      checking_balance: number;
+      due_total: number;
+      forecast: number;
+      margin: number;
+      due: { label: string; amount: number; in_forecast: boolean }[];
+      afford?: { price: number; can_afford: boolean; remaining: number; missing: number };
+    };
+
+    function forecastDb() {
+      const db = freshDb();
+      db.delete(accounts).run();
+      const checking = createAccount(db, { name: "Courant", type: "checking", initialBalance: 100_000 }).id;
+      const savings = createAccount(db, { name: "Livret", type: "savings", initialBalance: 50_000 }).id;
+      db.insert(recurring).values({ label: "Loyer", amount: 30_000, accountId: checking, frequency: "monthly", anchorMonth: null }).run();
+      db.insert(recurring).values({ label: "Épargne auto", amount: 10_000, accountId: savings, frequency: "monthly", anchorMonth: null }).run();
+      return db;
+    }
+
+    it("est en lecture seule : dans aiTools, absent de writeTools", () => {
+      expect(aiTools.some((t) => t.name === "get_forecast")).toBe(true);
+      expect(writeTools.some((t) => t.name === "get_forecast")).toBe(false);
+    });
+
+    it("sans prix : prévision en euros, échues avec in_forecast", async () => {
+      const f = (await runTool(forecastDb(), "get_forecast", {}, "2026-10-26")) as Forecast;
+      expect(f).toEqual({
+        currency: "EUR",
+        period: "2026-10",
+        checking_balance: 1000,
+        due_total: 300,
+        forecast: 700,
+        margin: 200,
+        due: [
+          { label: "Loyer", amount: 300, in_forecast: true },
+          { label: "Épargne auto", amount: 100, in_forecast: false },
+        ],
+      });
+    });
+
+    it("avec prix : can_afford, remaining et missing", async () => {
+      const db = forecastDb();
+      const yes = (await runTool(db, "get_forecast", { price: 400 }, "2026-10-26")) as Forecast;
+      expect(yes.afford).toEqual({ price: 400, can_afford: true, remaining: 300, missing: 0 });
+      const no = (await runTool(db, "get_forecast", { price: 600.5 }, "2026-10-26")) as Forecast;
+      expect(no.afford).toEqual({ price: 600.5, can_afford: false, remaining: 99.5, missing: 100.5 });
+    });
+
+    it("refuse un prix invalide", async () => {
+      const db = forecastDb();
+      for (const price of [-1, 0, 1.234, "400", 1e12]) {
+        const r = (await runTool(db, "get_forecast", { price }, "2026-10-26")) as { error?: string };
+        expect(r.error, String(price)).toMatch(/^Paramètres invalides/);
+      }
+      const extra = (await runTool(db, "get_forecast", { foo: 1 }, "2026-10-26")) as { error?: string };
+      expect(extra.error).toMatch(/^Paramètres invalides/);
+    });
   });
 
   it("get_news est en lecture seule : dans aiTools, absent de writeTools", () => {

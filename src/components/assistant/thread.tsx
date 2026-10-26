@@ -50,6 +50,7 @@ export const TOOL_LABELS: Record<string, string> = {
   get_holdings: "Consultation de vos investissements…",
   get_goals: "Consultation de vos objectifs d'épargne…",
   get_news: "Consultation des actualités de vos positions…",
+  get_forecast: "Calcul de votre fin de mois…",
 };
 
 export const WRITE_TOOL_LABEL = "Modification de vos données…";

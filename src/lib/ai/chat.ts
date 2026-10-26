@@ -38,9 +38,9 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 // Partie stable du prompt système (mise en cache avec les outils, qui la précèdent).
 const READ_ONLY_LINE =
-  "- Tu consultes les données de l'utilisateur en lecture seule grâce aux outils : vue d'ensemble et budgets, transactions, dépenses par catégorie, investissements, objectifs d'épargne, actualités des positions. Tu ne peux rien modifier ; si l'utilisateur te le demande, indique-lui où le faire dans l'application.";
+  "- Tu consultes les données de l'utilisateur en lecture seule grâce aux outils : vue d'ensemble et budgets, transactions, dépenses par catégorie, investissements, objectifs d'épargne, actualités des positions, prévision de fin de mois et dépenses récurrentes. Tu ne peux rien modifier ; si l'utilisateur te le demande, indique-lui où le faire dans l'application.";
 const WRITE_LINE =
-  "- Tu consultes les données de l'utilisateur grâce aux outils de lecture (vue d'ensemble, budgets et liste des catégories, transactions, dépenses par catégorie, investissements, objectifs d'épargne, actualités des positions) et tu peux les modifier avec les outils d'écriture, selon les règles de la section « Modifications ».";
+  "- Tu consultes les données de l'utilisateur grâce aux outils de lecture (vue d'ensemble, budgets et liste des catégories, transactions, dépenses par catégorie, investissements, objectifs d'épargne, actualités des positions, prévision de fin de mois et dépenses récurrentes) et tu peux les modifier avec les outils d'écriture, selon les règles de la section « Modifications ».";
 
 const WRITE_SECTION = `Modifications :
 - N'utilise un outil d'écriture que pour exécuter une demande explicite formulée dans le DERNIER message de l'utilisateur (« ajoute… », « change… », « mets… », « supprime cette opération… »). Une question, une réflexion ou un souhait vague n'est pas une demande de modification. Ne refais jamais une modification demandée dans un message plus ancien.

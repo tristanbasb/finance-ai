@@ -42,6 +42,17 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
   sur mes actions ? ».
 - **Budgets** : dépenses du mois par catégorie, budget **modifiable sur place** (touchez le
   montant), mois précédents, et l'« Analyse IA » du mois.
+- **Dépenses récurrentes et fin de mois** : déclarez vos dépenses fixes (loyer, abonnements,
+  assurances…) dans **Réglages → Dépenses récurrentes**, mensuelles, trimestrielles ou
+  annuelles. Dans Budgets, la liste du mois indique ce qui reste **à valider** : **« Valider »**
+  crée l'opération (montant, date et compte modifiables) et la marque payée, ou vous la passez
+  pour le mois. La carte **« Fin de mois »** affiche le solde prévu (soldes des comptes courants
+  moins les récurrentes encore à payer) et **« Puis-je acheter »** vérifie si un achat reste
+  compatible avec votre marge de sécurité (**200 €** par défaut, réglable). La prévision ne
+  couvre que les **comptes courants** et **ne compte pas les dépenses courantes** (courses,
+  sorties…) : elle est donc optimiste. L'Accueil en résume la ligne « fin de mois ». Demandez à
+  Claude « Est-ce que je peux m'acheter un vélo à 400 € ? » : il utilise cette prévision et se
+  contente de vous donner les chiffres.
 - **Claude** (API Claude) : une conversation **permanente**, dans une **colonne** à droite sur
   grand écran, une bulle et un panneau sur mobile, ou en plein écran sur `/assistant`. Claude
   consulte vos données et peut aussi les **modifier à votre demande** (ajouter une opération,
@@ -53,8 +64,9 @@ L'application tient en **quatre rubriques** (Accueil, Activité, Patrimoine, Bud
   [Assistant proactif](#assistant-proactif).
 - **Telegram** (optionnel) : recevez les alertes et discutez avec l'assistant depuis votre
   téléphone, via un bot privé — voir [Telegram](#telegram).
-- **Réglages** : Comptes, Catégories (et budgets), Assistant IA (modèle), Notifications,
-  Telegram, Données (export JSON complet) et Sécurité.
+- **Réglages** : Comptes, Catégories (et budgets), Dépenses récurrentes (et marge de sécurité,
+  200 € par défaut), Assistant IA (modèle), Notifications, Telegram, Données (export JSON
+  complet) et Sécurité.
 - Interface en français, en euros, pensée pour le mobile comme pour l'ordinateur, thème clair
   et sombre, navigation au clavier.
 - Protégé par mot de passe, données stockées dans un simple fichier SQLite.
@@ -331,7 +343,7 @@ journaux périmés sont supprimés, puis la base est copiée avec son journal WA
 (cas d'une copie brute faite par `update.sh` sans image Docker disponible).
 
 **Repartir de zéro** : **Réglages → Données → Réinitialiser l'application** efface toutes les
-données (opérations, comptes, positions, objectifs, budgets, conversation avec Claude, réglages
+données (opérations, comptes, positions, objectifs, budgets, dépenses récurrentes, conversation avec Claude, réglages
 et liaison Telegram) et l'application repart comme une installation neuve. Le mot de passe, la
 clé API et le token Telegram, qui sont dans `.env`, ne changent pas. La confirmation demande
 le mot de passe et le mot `RÉINITIALISER`. Une sauvegarde complète
@@ -371,8 +383,8 @@ Non interactif : `FINANCE_AI_PASSWORD='…' ./scripts/set-password.sh`.
   de l'autre (pas encore de type « virement »).
 - **Réimporter un CSV** qui chevauche un import précédent crée des **doublons** (pas de
   détection automatique).
-- Mono-utilisateur, pas de connexion bancaire directe, pas de transactions récurrentes
-  automatiques.
+- Mono-utilisateur, pas de connexion bancaire directe, pas d'opérations récurrentes créées
+  automatiquement : les dépenses récurrentes sont à valider chaque mois.
 
 ## Développement local
 

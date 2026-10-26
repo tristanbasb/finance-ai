@@ -149,6 +149,15 @@ describe("prompt système", () => {
   });
 });
 
+describe("prévision de fin de mois", () => {
+  it("figure parmi les données consultables, avec ou sans écriture", () => {
+    expect(JSON.stringify(systemPrompt(TODAY, "app"))).toContain("prévision de fin de mois et dépenses récurrentes");
+    expect(JSON.stringify(systemPrompt(TODAY, "app", { write: true }))).toContain(
+      "prévision de fin de mois et dépenses récurrentes",
+    );
+  });
+});
+
 describe("runChat avec écriture", () => {
   it("outils d'écriture ajoutés, appel routé vers runWriteTool, ids collectés", async () => {
     const db = freshDb();

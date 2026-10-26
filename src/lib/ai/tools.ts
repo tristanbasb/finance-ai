@@ -5,6 +5,8 @@ import type { Db } from "@/lib/db";
 import { accounts, categories, news, newsSymbols, transactions } from "@/lib/db/schema";
 import { todayLocal } from "@/lib/dates";
 import { goalProgress, monthRange } from "@/lib/finance";
+import { canAfford, currentPeriod, forecastFor } from "@/lib/forecast";
+import { MAX_CENTS } from "@/lib/money";
 import { activeSymbols } from "@/lib/news/store";
 import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listCategories } from "@/lib/queries/categories";
@@ -50,6 +52,19 @@ const newsInput = z
     symbol: z.string().trim().min(1).max(30).optional(),
     days: z.number().int().min(1).max(30).optional(),
     limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+const hasTwoDecimals = (x: number) => Math.abs(x * 100 - Math.round(x * 100)) < 1e-6;
+const forecastInput = z
+  .object({
+    price: z
+      .number()
+      .finite()
+      .refine((x) => x > 0, "Le prix doit être supérieur à 0")
+      .refine(hasTwoDecimals, "2 décimales au maximum")
+      .refine((x) => Math.round(x * 100) <= MAX_CENTS, "Prix trop élevé")
+      .optional(),
   })
   .strict();
 
@@ -134,6 +149,25 @@ export const aiTools: Anthropic.Tool[] = [
         symbol: { type: "string", description: "Ticker d'une position (insensible à la casse) ; omis : toutes les positions." },
         days: { type: "integer", minimum: 1, maximum: 30, description: "Publiées depuis ce nombre de jours (défaut 7)." },
         limit: { type: "integer", minimum: 1, maximum: 50, description: "Nombre maximal d'articles (défaut 20)." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_forecast",
+    description:
+      "Prévision de fin de mois des comptes courants : solde actuel, dépenses récurrentes encore à payer ce mois-ci, " +
+      "solde prévu en fin de mois et marge de sécurité de l'utilisateur. Montants en euros. " +
+      "La prévision ne compte que les récurrentes : les dépenses courantes (courses, sorties…) n'y figurent pas, " +
+      "elle est donc optimiste ; dis-le à l'utilisateur. " +
+      "`due` liste les récurrentes à payer, avec `in_forecast` (faux si elles sont sur un compte hors comptes courants). " +
+      "Avec `price` (en euros), indique aussi si l'utilisateur peut se l'offrir en gardant la marge : " +
+      "à utiliser pour « Est-ce que je peux m'acheter un vélo à 400 € ? ». " +
+      "Tu ne donnes aucun conseil d'investissement : tu énonces les chiffres.",
+    input_schema: {
+      type: "object",
+      properties: {
+        price: { type: "number", exclusiveMinimum: 0, description: "Prix d'un achat envisagé, en euros (2 décimales au maximum)." },
       },
       additionalProperties: false,
     },
@@ -431,6 +465,25 @@ function getNewsTool(db: Db, input: z.infer<typeof newsInput>) {
   };
 }
 
+function getForecastTool(db: Db, today: string, price?: number) {
+  const f = forecastFor(db, currentPeriod(today));
+  const result = {
+    currency: "EUR",
+    period: currentPeriod(today),
+    checking_balance: eur(f.checkingBalance),
+    due_total: eur(f.dueTotal),
+    forecast: eur(f.forecast),
+    margin: eur(f.margin),
+    due: f.items
+      .filter((i) => i.status === "due")
+      .map((i) => ({ label: i.label, amount: eur(i.amount), in_forecast: i.inForecast })),
+  };
+  if (price === undefined) return result;
+  const cents = Math.round(price * 100);
+  const a = canAfford(f.forecast, f.margin, cents);
+  return { ...result, afford: { price, can_afford: a.ok, remaining: eur(a.remaining), missing: eur(a.missing) } };
+}
+
 /**
  * Exécute un outil. Ne lève jamais : outil inconnu, entrée invalide ou erreur interne → `{ error }`.
  * `today` (YYYY-MM-DD) sert de référence pour le mois en cours et les objectifs.
@@ -467,6 +520,11 @@ export async function runTool(db: Db, name: string, input: unknown, today: strin
         const parsed = newsInput.safeParse(input ?? {});
         if (!parsed.success) return { error: firstIssue(parsed.error) };
         return getNewsTool(db, parsed.data);
+      }
+      case "get_forecast": {
+        const parsed = forecastInput.safeParse(input ?? {});
+        if (!parsed.success) return { error: firstIssue(parsed.error) };
+        return getForecastTool(db, today, parsed.data.price);
       }
       default:
         return { error: `Outil inconnu : ${name}` };
