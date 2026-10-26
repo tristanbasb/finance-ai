@@ -33,6 +33,12 @@ describe("newsQuery", () => {
   });
   it("laisse intacts les identifiants crypto non standard", () => {
     expect(newsQuery("bitcoin", "crypto")).toBe("bitcoin");
+    expect(newsQuery("ABCDEFG", "crypto")).toBe("ABCDEFG");
+  });
+  it("met en majuscules et suffixe les symboles crypto de 1 à 6 caractères", () => {
+    expect(newsQuery("btc", "crypto")).toBe("BTC-USD");
+    expect(newsQuery("X", "crypto")).toBe("X-USD");
+    expect(newsQuery("ABCDEF", "crypto")).toBe("ABCDEF-USD");
   });
   it("laisse intacts les symboles d'ETF et d'actions", () => {
     expect(newsQuery("CW8.PA", "etf")).toBe("CW8.PA");

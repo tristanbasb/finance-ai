@@ -20,11 +20,11 @@ export type NewsItem = {
 export type NewsFetcher = (query: string) => Promise<NewsItem[]>;
 
 /**
- * Requête Yahoo pour une position : un symbole crypto court en majuscules (« BTC ») devient
+ * Requête Yahoo pour une position : un symbole crypto court (« btc », « BTC ») devient
  * une paire (« BTC-USD ») ; les autres identifiants sont transmis tels quels.
  */
 export function newsQuery(symbol: string, assetType: "stock" | "etf" | "crypto"): string {
-  if (assetType === "crypto" && /^[A-Z0-9]{2,10}$/.test(symbol)) return `${symbol}-USD`;
+  if (assetType === "crypto" && /^[A-Za-z0-9]{1,6}$/.test(symbol)) return `${symbol.toUpperCase()}-USD`;
   return symbol;
 }
 
@@ -37,6 +37,7 @@ export function parseYahooNews(raw: unknown[]): NewsItem[] {
     const title = typeof r.title === "string" ? r.title.trim() : "";
     if (typeof r.uuid !== "string" || !r.uuid || !title) continue;
     const t = r.providerPublishTime;
+    // Un nombre est un horodatage Unix en secondes (réponse brute de l'API).
     const publishedAt = t instanceof Date ? t.getTime() : typeof t === "number" ? t * 1000 : NaN;
     if (!Number.isFinite(publishedAt)) continue;
     let link: URL;
