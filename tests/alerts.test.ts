@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { accounts, alertLog, categories, goals, holdings, messages, prices } from "@/lib/db/schema";
+import { accounts, alertLog, categories, goals, holdings, messages, news, newsSymbols, prices } from "@/lib/db/schema";
 import { budgetAlerts, goalReachedAlerts, priceMoveAlerts, unusualExpense } from "@/lib/alerts/rules";
 import Anthropic from "@anthropic-ai/sdk";
 import {
@@ -353,6 +353,69 @@ describe("runAlertChecks", () => {
     const log = db.select().from(alertLog).all();
     expect(log).toHaveLength(1);
     expect(log[0].key).toBe("price:AAPL:2026-10-26:up");
+  });
+
+  describe("actualités jointes aux variations de cours", () => {
+    const now = new Date(2026, 9, 26, 15).getTime();
+    function setup(db: TestDb) {
+      db.insert(holdings)
+        .values({ accountId: account(db).id, symbol: "aapl", name: "Apple", assetType: "stock", quantity: 2, avgPrice: 5_000 })
+        .run();
+      db.insert(prices)
+        .values({ symbol: "aapl", price: 200, currency: "EUR", fetchedAt: now - 60_000, changePct: 6, changeAt: now - 60_000 })
+        .run();
+    }
+    function article(db: TestDb, uuid: string, title: string, titleFr: string | null, publishedAt: number) {
+      const row = db
+        .insert(news)
+        .values({ uuid, title, titleFr, publisher: "Yahoo", link: `https://x/${uuid}`, publishedAt, fetchedAt: now })
+        .returning({ id: news.id })
+        .get();
+      db.insert(newsSymbols).values({ newsId: row.id, symbol: "AAPL" }).run();
+    }
+
+    it("article de 10 h : titre fr dans facts.news, texte modèle « Actualité : »", async () => {
+      const db = freshDb();
+      setup(db);
+      article(db, "a", "Apple beats", "Apple dépasse les attentes", now - 10 * 3_600_000);
+      article(db, "b", "Old news", "Vieille nouvelle", now - 3 * 86_400_000);
+      const { ai, create } = fakeAi("Message");
+      await runAlertChecks(db, { prices: true }, { ai, now });
+      const sentPrompt = JSON.stringify(create.mock.calls[0][0]);
+      expect(sentPrompt).toContain("Apple dépasse les attentes");
+      expect(sentPrompt).not.toContain("Vieille nouvelle");
+
+      const db2 = freshDb();
+      setup(db2);
+      article(db2, "a", "Apple beats", "Apple dépasse les attentes", now - 10 * 3_600_000);
+      await runAlertChecks(db2, { prices: true }, { ai: null, now });
+      expect(db2.select().from(messages).all()[0].content).toContain("Actualité : Apple dépasse les attentes.");
+    });
+
+    it("titre d'origine sans traduction, 3 titres au plus joints par « ; »", async () => {
+      const db = freshDb();
+      setup(db);
+      for (let i = 1; i <= 4; i++) article(db, `u${i}`, `Title ${i}`, null, now - i * 3_600_000);
+      await runAlertChecks(db, { prices: true }, { ai: null, now });
+      expect(db.select().from(messages).all()[0].content).toContain("Actualité : Title 1 ; Title 2 ; Title 3.");
+    });
+
+    it("article de 3 jours seulement : pas de clé news", async () => {
+      const db = freshDb();
+      setup(db);
+      article(db, "b", "Old news", "Vieille nouvelle", now - 3 * 86_400_000);
+      const { ai, create } = fakeAi("Message");
+      await runAlertChecks(db, { prices: true }, { ai, now });
+      const sentPrompt = JSON.stringify(create.mock.calls[0][0]);
+      expect(sentPrompt).not.toContain('\\"news\\"');
+      const db2 = freshDb();
+      setup(db2);
+      article(db2, "b", "Old news", "Vieille nouvelle", now - 3 * 86_400_000);
+      await runAlertChecks(db2, { prices: true }, { ai: null, now });
+      const text = db2.select().from(messages).all()[0].content;
+      expect(text).toContain("Apple");
+      expect(text).not.toContain("Actualité");
+    });
   });
 
   describe("marché fermé (week-end, avant l'ouverture)", () => {

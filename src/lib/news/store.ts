@@ -1,4 +1,4 @@
-import { eq, lt } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import type { Db } from "@/lib/db";
 import { news, newsSymbols } from "@/lib/db/schema";
 import type { NewsItem } from "./yahoo";
@@ -42,4 +42,20 @@ export function purgeNews(db: Db, now: number): void {
   db.delete(news)
     .where(lt(news.publishedAt, now - RETENTION_MS))
     .run();
+}
+
+/**
+ * Titres (français si traduit, sinon d'origine) des articles liés à `symbol` (en majuscules)
+ * publiés depuis `since` (ms), les plus récents d'abord.
+ */
+export function recentTitles(db: Db, symbol: string, since: number, limit: number): string[] {
+  return db
+    .select({ title: news.title, titleFr: news.titleFr })
+    .from(news)
+    .innerJoin(newsSymbols, eq(newsSymbols.newsId, news.id))
+    .where(and(eq(newsSymbols.symbol, symbol), gte(news.publishedAt, since)))
+    .orderBy(desc(news.publishedAt), desc(news.id))
+    .limit(limit)
+    .all()
+    .map((r) => r.titleFr ?? r.title);
 }

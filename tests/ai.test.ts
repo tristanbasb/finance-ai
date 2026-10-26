@@ -4,10 +4,11 @@ import { eq } from "drizzle-orm";
 import { createDb, getDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { accounts, aiCache, categories, holdings } from "@/lib/db/schema";
+import { accounts, aiCache, categories, holdings, news, newsSymbols } from "@/lib/db/schema";
 import { createTransactions } from "@/lib/queries/transactions";
 import { AI_DISABLED_MESSAGE, aiErrorInfo, getAi, type Ai } from "@/lib/ai/client";
 import { aiTools, runTool } from "@/lib/ai/tools";
+import { writeTools } from "@/lib/ai/write-tools";
 import { categorize } from "@/lib/ai/categorize";
 import { chatRequest, encodeSse, runChat, type ChatEvent } from "@/lib/ai/chat";
 import { getInsights } from "@/lib/ai/insights";
@@ -150,14 +151,53 @@ describe("aiErrorInfo", () => {
 });
 
 describe("outils", () => {
-  it("définit les 5 outils en lecture seule", () => {
+  it("définit les 6 outils en lecture seule", () => {
     expect(aiTools.map((t) => t.name).sort()).toEqual([
       "get_goals",
       "get_holdings",
+      "get_news",
       "get_overview",
       "search_transactions",
       "spending_by_category",
     ]);
+  });
+
+  it("get_news est en lecture seule : dans aiTools, absent de writeTools", () => {
+    expect(aiTools.some((t) => t.name === "get_news")).toBe(true);
+    expect(writeTools.some((t) => t.name === "get_news")).toBe(false);
+  });
+
+  it("get_news filtre par symbole (insensible à la casse), jours, tri et format", async () => {
+    const db = freshDb();
+    const now = Date.now();
+    const add = (uuid: string, title: string, titleFr: string | null, at: number, syms: string[]) => {
+      const row = db
+        .insert(news)
+        .values({ uuid, title, titleFr, publisher: "Yahoo", link: `https://x/${uuid}`, publishedAt: at, fetchedAt: now })
+        .returning({ id: news.id })
+        .get();
+      for (const s of syms) db.insert(newsSymbols).values({ newsId: row.id, symbol: s }).run();
+    };
+    add("1", "Older", "Plus ancien", now - 2 * 86_400_000, ["CW8"]);
+    add("2", "Newer", null, now - 3_600_000, ["CW8", "AAPL"]);
+    add("3", "Other", "Autre", now - 3_600_000, ["AAPL"]);
+    add("4", "Ancient", "Très ancien", now - 20 * 86_400_000, ["CW8"]);
+    type R = {
+      count: number;
+      articles: { symbols: string[]; title: string; original_title: string; publisher: string; published_at: string; link: string }[];
+    };
+    const r = (await runTool(db, "get_news", { symbol: "cw8" })) as R;
+    expect(r.count).toBe(2);
+    expect(r.articles.map((a) => a.original_title)).toEqual(["Newer", "Older"]);
+    expect(r.articles[0].title).toBe("Newer");
+    expect(r.articles[1].title).toBe("Plus ancien");
+    expect(r.articles[0].symbols.sort()).toEqual(["AAPL", "CW8"]);
+    expect(r.articles[0].published_at).toBe(new Date(now - 3_600_000).toISOString());
+    expect(r.articles[0].link).toBe("https://x/2");
+    expect(((await runTool(db, "get_news", { symbol: "CW8", days: 30 })) as R).count).toBe(3);
+    expect(((await runTool(db, "get_news", {})) as R).count).toBe(3);
+    expect(((await runTool(db, "get_news", { limit: 1 })) as R).articles).toHaveLength(1);
+    expect(await runTool(db, "get_news", { days: 99 })).toHaveProperty("error");
   });
 
   it("search_transactions { q: 'loyer' } filtre libellés et notes, montants en euros", async () => {

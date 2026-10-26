@@ -49,6 +49,7 @@ export const TOOL_LABELS: Record<string, string> = {
   spending_by_category: "Analyse de vos dépenses par catégorie…",
   get_holdings: "Consultation de vos investissements…",
   get_goals: "Consultation de vos objectifs d'épargne…",
+  get_news: "Consultation des actualités de vos positions…",
 };
 
 export const WRITE_TOOL_LABEL = "Modification de vos données…";
