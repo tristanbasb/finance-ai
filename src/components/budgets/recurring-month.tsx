@@ -203,7 +203,7 @@ function RecurringItem({
   async function undoSkip() {
     setBusy("undo");
     if (await deletePayment(item.id, period)) {
-      toast.success("Validation annulée", { description: item.label });
+      toast.success("Saut annulé", { description: item.label });
       router.refresh();
     }
     setBusy(null);
@@ -232,8 +232,11 @@ function RecurringItem({
               item.status === "skipped" ? "text-subtle line-through" : settled ? "text-muted" : "text-fg",
             )}
           >
-            {formatEUR(item.amount)}
+            {formatEUR(item.paidAmount ?? item.amount)}
           </span>
+          {item.paidAmount !== null && item.paidAmount !== item.amount && (
+            <span className="num text-[12px] text-subtle">prévu {formatEUR(item.amount)}</span>
+          )}
           <Badge variant={badge.variant}>
             <BadgeIcon aria-hidden />
             {RECURRING_STATUS_LABELS[item.status]}

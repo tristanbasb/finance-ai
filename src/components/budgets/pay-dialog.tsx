@@ -48,6 +48,11 @@ export function PayDialog({ open, onClose, period, item, accounts }: PayDialogPr
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
 
+  // Échap ou clic sur le fond pendant l'envoi : ignorés.
+  const close = () => {
+    if (!saving) onClose();
+  };
+
   const amountRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (open) amountRef.current?.focus();
@@ -92,7 +97,7 @@ export function PayDialog({ open, onClose, period, item, accounts }: PayDialogPr
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={close}
       title="Valider la dépense"
       description={`${item.label}${item.categoryName ? ` · ${item.categoryName}` : ""} : une opération sera ajoutée à l'Activité.`}
       footer={

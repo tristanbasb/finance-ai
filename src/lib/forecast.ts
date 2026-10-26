@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Db } from "@/lib/db";
-import { categories, recurringPayments } from "@/lib/db/schema";
+import { categories, recurringPayments, transactions } from "@/lib/db/schema";
 import { todayLocal } from "@/lib/dates";
 import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listRecurring, type Recurring } from "@/lib/queries/recurring";
@@ -20,6 +20,8 @@ export type MonthRecurring = {
   anchorMonth: number | null;
   status: RecurringStatus;
   transactionId: number | null;
+  /** Montant réellement payé (centimes positifs, opération liée) si payée, sinon null. */
+  paidAmount: number | null;
   /** Vrai si le montant entre dans la prévision (à payer, sur un compte courant non archivé). */
   inForecast: boolean;
 };
@@ -54,6 +56,18 @@ export function monthRecurring(db: Db, period: string): MonthRecurring[] {
       .all()
       .map((p) => [p.recurringId, p]),
   );
+  // Montants des opérations liées, en une requête.
+  const txIds = [...payments.values()].flatMap((p) => (p.transactionId === null ? [] : [p.transactionId]));
+  const paidAmounts = new Map(
+    txIds.length === 0
+      ? []
+      : db
+          .select({ id: transactions.id, amount: transactions.amount })
+          .from(transactions)
+          .where(inArray(transactions.id, txIds))
+          .all()
+          .map((t) => [t.id, Math.abs(t.amount)]),
+  );
   return listRecurring(db)
     .filter((r) => isDue(r, period))
     .map((r) => {
@@ -72,6 +86,8 @@ export function monthRecurring(db: Db, period: string): MonthRecurring[] {
         anchorMonth: r.anchorMonth,
         status,
         transactionId: payment?.transactionId ?? null,
+        paidAmount:
+          status === "paid" && payment?.transactionId != null ? (paidAmounts.get(payment.transactionId) ?? null) : null,
         inForecast: status === "due" && account?.type === "checking" && !account.archived,
       };
     });

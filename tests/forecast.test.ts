@@ -131,6 +131,20 @@ describe("prévision", () => {
     expect(f.forecast).toBe(f.checkingBalance - 5_000);
   });
 
+  it("paidAmount : montant réellement payé (positif) pour une payée, null sinon", () => {
+    const paid = add("Loyer", 80_000, c1);
+    const skipped = add("Magazine", 2_000, c1);
+    const due = add("Netflix", 1_399, c1);
+    const tx = createTransaction(db, { accountId: c1, categoryId: null, date: "2026-10-05", amount: -81_240, label: "Loyer" });
+    db.insert(recurringPayments).values({ recurringId: paid.id, period: P, transactionId: tx.id }).run();
+    db.insert(recurringPayments).values({ recurringId: skipped.id, period: P, skipped: true }).run();
+    const items = monthRecurring(db, P);
+    const by = (id: number) => items.find((i) => i.id === id)!;
+    expect(by(paid.id)).toMatchObject({ status: "paid", amount: 80_000, paidAmount: 81_240 });
+    expect(by(skipped.id).paidAmount).toBeNull();
+    expect(by(due.id).paidAmount).toBeNull();
+  });
+
   it("exclut un compte courant archivé", () => {
     add("Loyer", 5_000, c2);
     updateAccount(db, c2, { archived: true });

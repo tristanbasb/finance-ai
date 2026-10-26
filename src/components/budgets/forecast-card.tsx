@@ -64,7 +64,8 @@ export function ForecastCard({
             <div>
               <dt className="sr-only">Récurrentes à venir</dt>
               <dd className="num flex items-center gap-2 text-muted">
-                <Repeat aria-hidden className="size-3.5 shrink-0" />− {formatEUR(dueTotal)} de récurrentes à venir
+                <Repeat aria-hidden className="size-3.5 shrink-0" />
+                {dueTotal > 0 ? `− ${formatEUR(dueTotal)} de récurrentes à venir` : "Aucune récurrente encore à payer"}
               </dd>
             </div>
           </dl>
