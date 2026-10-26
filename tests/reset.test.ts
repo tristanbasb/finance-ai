@@ -7,7 +7,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { createDb } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
-import { accounts, categories, goals, holdings, jobRuns, messages, settings, transactions } from "@/lib/db/schema";
+import { accounts, categories, goals, holdings, jobRuns, messages, recurring, recurringPayments, settings, transactions } from "@/lib/db/schema";
 import { backupBeforeReset, resetDatabase } from "@/lib/reset";
 import { setAiCanWrite } from "@/lib/settings";
 import { createTransaction } from "@/lib/queries/transactions";
@@ -35,6 +35,13 @@ function fill(db: Db) {
   db.insert(messages).values({ role: "user", kind: "chat", source: "app", content: "Bonjour", createdAt: Date.now() }).run();
   db.insert(jobRuns).values({ job: "weekly", lastPeriod: "2026-W43", lastRunAt: Date.now() }).run();
   setAiCanWrite(db, false);
+  const rec = db
+    .insert(recurring)
+    .values({ label: "Loyer", amount: 50_000, accountId: acc.id, frequency: "monthly", anchorMonth: null })
+    .returning()
+    .get()!;
+  const tx = db.select().from(transactions).get()!;
+  db.insert(recurringPayments).values({ recurringId: rec.id, period: "2026-10", transactionId: tx.id }).run();
 }
 
 let dir: string;
@@ -54,6 +61,8 @@ describe("resetDatabase", () => {
     expect(db.select().from(holdings).all()).toEqual([]);
     expect(db.select().from(messages).all()).toEqual([]);
     expect(db.select().from(settings).all()).toEqual([]);
+    expect(db.select().from(recurring).all()).toEqual([]);
+    expect(db.select().from(recurringPayments).all()).toEqual([]);
     const strip = <T extends { id: number }>(rows: T[]) =>
       rows.map((row) => ({ ...row, id: 0, createdAt: "createdAt" in row ? 0 : undefined }));
     expect(strip(db.select().from(categories).all())).toEqual(strip(fresh.select().from(categories).all()));

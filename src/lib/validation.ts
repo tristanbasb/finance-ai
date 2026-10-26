@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACCOUNT_TYPES, ASSET_TYPES, CATEGORY_KINDS } from "@/lib/db/schema";
+import { ACCOUNT_TYPES, ASSET_TYPES, CATEGORY_KINDS, RECURRING_FREQUENCIES } from "@/lib/db/schema";
 
 // Pas de `.default()` ici : avec `.partial()` (PATCH) un défaut réécraserait la valeur existante.
 // Les valeurs par défaut sont portées par les colonnes SQLite.
@@ -46,6 +46,21 @@ export const transactionInput = z.object({
   label: name,
   note: z.string().trim().max(1000).nullable().optional(),
 });
+
+export const recurringInput = z
+  .object({
+    label: z.string().trim().min(1).max(80),
+    amount: z.number().int().min(1).max(99_999_999_999),
+    categoryId: id.nullable(),
+    accountId: id,
+    frequency: z.enum(RECURRING_FREQUENCIES),
+    anchorMonth: z.number().int().min(1).max(12).nullable(),
+    active: z.boolean().optional(),
+  })
+  .refine((r) => (r.frequency === "monthly") === (r.anchorMonth === null), {
+    message: "Le mois de référence est requis sauf pour une récurrente mensuelle",
+    path: ["anchorMonth"],
+  });
 
 export const goalInput = z.object({
   name,
@@ -99,6 +114,7 @@ export const transactionFilters = z.object({
 export type AccountInput = z.infer<typeof accountInput>;
 export type CategoryInput = z.infer<typeof categoryInput>;
 export type TransactionInput = z.infer<typeof transactionInput>;
+export type RecurringInput = z.infer<typeof recurringInput>;
 export type GoalInput = z.infer<typeof goalInput>;
 export type HoldingInput = z.infer<typeof holdingInput>;
 export type ImportInput = z.infer<typeof importInput>;

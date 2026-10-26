@@ -94,3 +94,12 @@ export function aiCanWrite(db: Db): boolean {
 export function setAiCanWrite(db: Db, enabled: boolean): void {
   setSetting(db, "ai_can_write", enabled);
 }
+
+/** Marge de sécurité de la prévision de fin de mois (centimes) ; 200 € par défaut. */
+export function getForecastMargin(db: Db): number {
+  return getSetting(db, "forecast_margin", z.number().int().nonnegative(), 20_000);
+}
+
+export function setForecastMargin(db: Db, cents: number): void {
+  setSetting(db, "forecast_margin", z.number().int().nonnegative().parse(cents));
+}

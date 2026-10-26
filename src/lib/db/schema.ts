@@ -180,3 +180,36 @@ export const newsSymbols = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.newsId, t.symbol] })],
 );
+
+export const RECURRING_FREQUENCIES = ["monthly", "quarterly", "yearly"] as const;
+
+/** Dépenses récurrentes déclarées (montant en centimes, positif ; c'est une dépense). */
+export const recurring = sqliteTable("recurring", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  label: text("label").notNull(),
+  amount: integer("amount").notNull(),
+  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "restrict" }),
+  frequency: text("frequency", { enum: RECURRING_FREQUENCIES }).notNull(),
+  /** Mois d'échéance de référence (1-12) ; null pour une récurrente mensuelle. */
+  anchorMonth: integer("anchor_month"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+});
+
+/** Paiement (ou saut) d'une récurrente pour un mois `YYYY-MM`. Supprimer l'opération supprime la ligne. */
+export const recurringPayments = sqliteTable(
+  "recurring_payments",
+  {
+    recurringId: integer("recurring_id")
+      .notNull()
+      .references(() => recurring.id, { onDelete: "cascade" }),
+    period: text("period").notNull(),
+    transactionId: integer("transaction_id").references(() => transactions.id, { onDelete: "cascade" }),
+    skipped: integer("skipped", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.recurringId, t.period] })],
+);

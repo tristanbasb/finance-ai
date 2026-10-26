@@ -11,6 +11,8 @@ import {
   holdings,
   messages,
   prices,
+  recurring,
+  recurringPayments,
   settings,
   snapshots,
   transactions,
@@ -57,9 +59,10 @@ export async function backupBeforeReset(db: Db, dir: string, now = new Date()): 
 export function resetDatabase(db: Db): void {
   db.transaction((tx) => {
     // Enfants d'abord (clés étrangères).
-    for (const table of [aiActions, messages, alertLog, snapshots, aiCache, prices, holdings, goals, transactions]) {
+    for (const table of [aiActions, messages, alertLog, snapshots, aiCache, prices, holdings, goals, recurringPayments, transactions]) {
       tx.delete(table).run();
     }
+    tx.delete(recurring).run();
     tx.delete(accounts).run();
     tx.delete(categories).run();
     tx.delete(settings).run();
