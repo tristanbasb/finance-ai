@@ -5,7 +5,7 @@ import { runMigrations } from "@/lib/db/migrate";
 import { seedDefaults } from "@/lib/db/seed";
 import { accounts, holdings, news, newsSymbols } from "@/lib/db/schema";
 import { newsQuery, parseYahooNews } from "@/lib/news/yahoo";
-import { purgeNews, saveNews } from "@/lib/news/store";
+import { lastNewsFetch, listNews, newsCounts, purgeNews, saveNews } from "@/lib/news/store";
 import type { NewsItem } from "@/lib/news/yahoo";
 import { translatePendingTitles } from "@/lib/news/translate";
 import { isNewsHour, refreshNews, type NewsDeps } from "@/lib/news";
@@ -217,5 +217,95 @@ describe("isNewsHour", () => {
     expect(isNewsHour(new Date(2026, 9, 26, 7, 0))).toBe(true);
     expect(isNewsHour(new Date(2026, 9, 26, 21, 59))).toBe(true);
     expect(isNewsHour(new Date(2026, 9, 26, 22, 0))).toBe(false);
+  });
+});
+
+describe("listNews / newsCounts / lastNewsFetch", () => {
+  function setup() {
+    const db = freshDb();
+    const acc = db.select().from(accounts).get()!;
+    const archived = db.insert(accounts).values({ name: "Vieux", type: "investment", archived: true }).returning().get();
+    const h = (accountId: number, symbol: string, name: string, assetType: "stock" | "crypto" | "manual") =>
+      db.insert(holdings).values({ accountId, symbol, name, assetType, quantity: 1, avgPrice: 1 }).returning().get();
+    h(acc.id, "aapl", "Apple", "stock");
+    h(acc.id, "BTC", "Bitcoin", "crypto");
+    h(acc.id, "MAISON", "Maison", "manual");
+    h(archived.id, "OLD", "Ancienne", "stock");
+    const sold = h(acc.id, "GONE", "Vendue", "stock");
+    const add = (uuid: string, symbols: string[], publishedAt: number, fetchedAt = 50) => {
+      const row = db
+        .insert(news)
+        .values({ uuid, title: `T ${uuid}`, publisher: "Reuters", link: `https://example.com/${uuid}`, publishedAt, fetchedAt })
+        .returning()
+        .get();
+      for (const s of symbols) db.insert(newsSymbols).values({ newsId: row.id, symbol: s }).run();
+      return row.id;
+    };
+    return { db, add, sold };
+  }
+
+  it("ne renvoie que les symboles des positions actives, du plus récent au plus ancien", () => {
+    const { db, add, sold } = setup();
+    add("a", ["AAPL"], 300);
+    add("b", ["BTC", "OLD"], 200);
+    add("c", ["OLD"], 400);
+    add("d", ["GONE"], 500);
+    db.delete(holdings).where(eq(holdings.id, sold.id)).run();
+    const rows = listNews(db, { limit: 10 });
+    expect(rows.map((r) => r.title)).toEqual(["T a", "T b"]);
+    expect(rows[1].symbols).toEqual(["BTC"]);
+    expect(rows[0]).toMatchObject({
+      titleFr: null,
+      publisher: "Reuters",
+      link: "https://example.com/a",
+      publishedAt: 300,
+      symbols: ["AAPL"],
+    });
+  });
+
+  it("filtre par symbole (casse indifférente) et ignore un symbole non détenu", () => {
+    const { db, add } = setup();
+    add("a", ["AAPL"], 300);
+    add("b", ["BTC"], 200);
+    add("c", ["OLD"], 400);
+    expect(listNews(db, { symbol: "btc", limit: 10 }).map((r) => r.title)).toEqual(["T b"]);
+    expect(listNews(db, { symbol: "OLD", limit: 10 })).toEqual([]);
+  });
+
+  it("pagine avec before (strict) et beforeId pour départager les dates égales", () => {
+    const { db, add } = setup();
+    const ids = [add("a", ["AAPL"], 300), add("b", ["AAPL"], 200), add("c", ["AAPL"], 200), add("d", ["AAPL"], 100)];
+    const first = listNews(db, { limit: 2 });
+    expect(first.map((r) => r.title)).toEqual(["T a", "T c"]);
+    const next = listNews(db, { limit: 2, before: first[1].publishedAt, beforeId: first[1].id });
+    expect(next.map((r) => r.title)).toEqual(["T b", "T d"]);
+    expect(listNews(db, { limit: 10, before: 200 }).map((r) => r.id)).toEqual([ids[3]]);
+  });
+
+  it("compte les articles récents par position active, zéro compris", () => {
+    const { db, add } = setup();
+    add("a", ["AAPL"], 300);
+    add("b", ["AAPL", "BTC"], 250);
+    add("c", ["AAPL"], 10);
+    add("d", ["OLD"], 400);
+    expect(newsCounts(db, 100)).toEqual([
+      { symbol: "AAPL", name: "Apple", count: 2 },
+      { symbol: "BTC", name: "Bitcoin", count: 1 },
+      { symbol: "GONE", name: "Vendue", count: 0 },
+    ]);
+    expect(newsCounts(db, 1000)).toEqual([
+      { symbol: "AAPL", name: "Apple", count: 0 },
+      { symbol: "BTC", name: "Bitcoin", count: 0 },
+      { symbol: "GONE", name: "Vendue", count: 0 },
+    ]);
+    expect(newsCounts(freshDb(), 0)).toEqual([]);
+  });
+
+  it("donne la date de la dernière récupération, ou null", () => {
+    const { db, add } = setup();
+    expect(lastNewsFetch(db)).toBeNull();
+    add("a", ["AAPL"], 300, 70);
+    add("b", ["OLD"], 300, 90);
+    expect(lastNewsFetch(db)).toBe(90);
   });
 });

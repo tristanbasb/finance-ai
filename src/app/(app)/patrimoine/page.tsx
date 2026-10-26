@@ -7,7 +7,10 @@ import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listGoals } from "@/lib/queries/goals";
 import { listHoldingsWithValues } from "@/lib/queries/holdings";
 import { getOverview } from "@/lib/queries/overview";
+import { lastNewsFetch, listNews, newsCounts } from "@/lib/news/store";
+import { NEWS_PAGE } from "@/lib/news-ui";
 import { AccountsSection } from "@/components/patrimoine/accounts-section";
+import { NewsSection } from "@/components/patrimoine/news-section";
 import { PatrimoineHero } from "@/components/patrimoine/patrimoine-hero";
 import { SectionNav } from "@/components/patrimoine/section-nav";
 import { InvestmentsSection } from "@/components/investments/investments-section";
@@ -70,6 +73,8 @@ export default async function PatrimoinePage({ searchParams }: { searchParams: P
   const held = activeGroups.flatMap((g) => g.holdings);
   const heldValue = held.reduce((sum, h) => sum + h.value, 0);
   const heldCost = held.reduce((sum, h) => sum + h.cost, 0);
+  // Actualités : nombre par position cotée sur 7 jours (section masquée sans position cotée).
+  const newsCountsByHolding = newsCounts(db, now.getTime() - 7 * 86_400_000);
   const savings = active.filter((a) => a.type === "savings").reduce((sum, a) => sum + a.balance, 0);
 
   return (
@@ -108,6 +113,14 @@ export default async function PatrimoinePage({ searchParams }: { searchParams: P
           .filter((a) => a.type === "investment" || a.type === "crypto" || a.type === "other")
           .map((a) => ({ id: a.id, name: a.name, archived: a.archived }))}
       />
+
+      {newsCountsByHolding.length > 0 && (
+        <NewsSection
+          initial={listNews(db, { limit: NEWS_PAGE })}
+          counts={newsCountsByHolding}
+          lastFetch={lastNewsFetch(db)}
+        />
+      )}
     </div>
   );
 }
