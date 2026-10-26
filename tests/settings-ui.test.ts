@@ -4,6 +4,8 @@ import {
   activeSection,
   botDeepLink,
   formatCountdown,
+  frequencyLabel,
+  FRENCH_MONTHS,
   HOUR_OPTIONS,
   hourLabel,
   numberToInput,
@@ -80,10 +82,11 @@ describe("revertKeys", () => {
 });
 
 describe("SETTINGS_SECTIONS / activeSection", () => {
-  it("liste les sept rubriques dans l'ordre de la page", () => {
+  it("liste les huit rubriques dans l'ordre de la page", () => {
     expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual([
       "Comptes",
       "Catégories",
+      "Dépenses récurrentes",
       "Assistant IA",
       "Notifications",
       "Telegram",
@@ -100,7 +103,7 @@ describe("SETTINGS_SECTIONS / activeSection", () => {
 
   it("dernière rubrique dont le haut a passé le seuil", () => {
     const shifted = tops.map((t) => ({ ...t, top: t.top - 1300 }));
-    expect(activeSection(shifted, 140, false)).toBe("ia");
+    expect(activeSection(shifted, 140, false)).toBe("recurrentes");
   });
 
   it("dernière rubrique en bas de page, même si son haut n'a pas passé le seuil", () => {
@@ -109,5 +112,24 @@ describe("SETTINGS_SECTIONS / activeSection", () => {
 
   it("aucune rubrique mesurée : la première", () => {
     expect(activeSection([], 140, false)).toBe("comptes");
+  });
+});
+
+describe("frequencyLabel", () => {
+  it("mensuelle", () => {
+    expect(frequencyLabel("monthly", null)).toBe("Tous les mois");
+  });
+  it("trimestrielle avec mois de départ", () => {
+    expect(frequencyLabel("quarterly", 3)).toBe("Tous les 3 mois (à partir de mars)");
+    expect(frequencyLabel("quarterly", 1)).toBe("Tous les 3 mois (à partir de janvier)");
+  });
+  it("annuelle avec mois en minuscules", () => {
+    expect(frequencyLabel("yearly", 3)).toBe("Chaque année en mars");
+    expect(frequencyLabel("yearly", 8)).toBe("Chaque année en août");
+    expect(frequencyLabel("yearly", 12)).toBe("Chaque année en décembre");
+  });
+  it("douze mois en français", () => {
+    expect(FRENCH_MONTHS).toHaveLength(12);
+    expect(FRENCH_MONTHS[1]).toBe("février");
   });
 });

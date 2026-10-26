@@ -56,6 +56,7 @@ export function revertKeys<T extends object>(state: T, previous: T, patch: Parti
 export const SETTINGS_SECTIONS = [
   { id: "comptes", label: "Comptes" },
   { id: "categories", label: "Catégories" },
+  { id: "recurrentes", label: "Dépenses récurrentes" },
   { id: "ia", label: "Assistant IA" },
   { id: "notifications", label: "Notifications" },
   { id: "telegram", label: "Telegram" },
@@ -79,4 +80,29 @@ export function activeSection(
   let current = tops[0].id;
   for (const t of tops) if (t.top <= threshold) current = t.id;
   return current;
+}
+
+/** Les douze mois, en minuscules (janvier = indice 0). */
+export const FRENCH_MONTHS = [
+  "janvier",
+  "février",
+  "mars",
+  "avril",
+  "mai",
+  "juin",
+  "juillet",
+  "août",
+  "septembre",
+  "octobre",
+  "novembre",
+  "décembre",
+] as const;
+
+export type RecurringFrequency = "monthly" | "quarterly" | "yearly";
+
+/** Fréquence lisible d'une dépense récurrente : « Tous les mois », « Chaque année en mars »… */
+export function frequencyLabel(frequency: RecurringFrequency, anchorMonth: number | null): string {
+  if (frequency === "monthly" || anchorMonth === null) return "Tous les mois";
+  const month = FRENCH_MONTHS[anchorMonth - 1] ?? "";
+  return frequency === "quarterly" ? `Tous les 3 mois (à partir de ${month})` : `Chaque année en ${month}`;
 }

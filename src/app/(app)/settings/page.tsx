@@ -3,9 +3,12 @@ import { Database, Download, KeyRound } from "lucide-react";
 import { getDb } from "@/lib/db";
 import { listAccountsWithBalances } from "@/lib/queries/accounts";
 import { listCategories } from "@/lib/queries/categories";
+import { listRecurring } from "@/lib/queries/recurring";
+import { getForecastMargin } from "@/lib/settings";
 import { AccountsManager } from "@/components/settings/accounts-manager";
 import { AiStatus } from "@/components/settings/ai-status";
 import { CategoriesManager } from "@/components/settings/categories-manager";
+import { RecurringManager } from "@/components/settings/recurring-manager";
 import { NotificationsSettings } from "@/components/settings/notifications-settings";
 import { ResetData } from "@/components/settings/reset-data";
 import { SettingsNav } from "@/components/settings/settings-nav";
@@ -39,6 +42,17 @@ export default function SettingsPage() {
     icon: c.icon,
     monthlyBudget: c.monthlyBudget,
   }));
+  const recurringItems = listRecurring(db).map((r) => ({
+    id: r.id,
+    label: r.label,
+    amount: r.amount,
+    categoryId: r.categoryId,
+    accountId: r.accountId,
+    frequency: r.frequency,
+    anchorMonth: r.anchorMonth,
+    active: r.active,
+  }));
+  const expenseCategories = categories.filter((c) => c.kind === "expense");
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -51,6 +65,12 @@ export default function SettingsPage() {
 
       <AccountsManager accounts={accounts} />
       <CategoriesManager categories={categories} />
+      <RecurringManager
+        items={recurringItems}
+        categories={expenseCategories}
+        accounts={accounts}
+        margin={getForecastMargin(db)}
+      />
       <AiStatus />
       <NotificationsSettings />
       <TelegramSettings />
